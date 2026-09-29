@@ -1,0 +1,32 @@
+[package]
+name = "transfer-hook"
+version = "0.1.0"
+description = "Pyle Token-2022 transfer-hook program — gates transfers on a per-recipient eligibility PDA"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "transfer_hook"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+
+[dependencies]
+anchor-lang = { version = "1.2.0", features = ["init-if-needed"] }
+anchor-spl = { version = "1.2.0", features = ["token_2022", "token_2022_extensions"] }
+spl-discriminator = "0.5.2"
+spl-tlv-account-resolution = "^0.11.1"
+spl-transfer-hook-interface = "2.1.0"
+
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
