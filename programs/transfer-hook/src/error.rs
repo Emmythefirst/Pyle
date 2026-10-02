@@ -5,6 +5,9 @@ pub enum GateError {
     #[msg("The token is not currently transferring")]
     IsNotCurrentlyTransferring,
 
-    #[msg("Recipient wallet is not eligible to receive this token")]
-    NotAllowed,
+    #[msg("Eligibility credential has been revoked")]
+    CredentialRevoked,
+
+    #[msg("Eligibility credential has expired")]
+    CredentialExpired,
 }

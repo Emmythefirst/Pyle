@@ -1,5 +1,5 @@
 use {
-    crate::{error::GateError, state::WalletGate},
+    crate::error::GateError,
     anchor_lang::prelude::*,
     anchor_spl::{
         token_2022::spl_token_2022::{
@@ -11,10 +11,14 @@ use {
         },
         token_interface::{Mint, TokenAccount},
     },
+    eligibility_credential::{CredentialStatus, EligibilityCredential, POLICY_US_ACCREDITED},
 };
 
 // Execute account order is fixed by the transfer-hook interface:
 // [source, mint, destination, source_owner, validation, ...extra accounts].
+// Our extra accounts are, in order: the eligibility-credential program id
+// (needed so the credential PDA below can be resolved as an *external* PDA —
+// see initialise_extra_account_metas_list.rs) and the credential PDA itself.
 #[derive(Accounts)]
 pub struct TransferHook<'info> {
     /// CHECK: source token account; raw so we can read its
@@ -40,18 +44,47 @@ pub struct TransferHook<'info> {
     )]
     pub extra_account_metas_list: UncheckedAccount<'info>,
 
+    /// CHECK: used only as the owning-program anchor for the external
+    /// `credential` PDA below; identity enforced by the `address` constraint
+    #[account(address = eligibility_credential::ID)]
+    pub eligibility_credential_program: UncheckedAccount<'info>,
+
+    /// CHECK: never initialized — exists purely so its address (= POLICY_US_ACCREDITED's
+    /// 32 bytes, reinterpreted as a Pubkey) can feed `credential`'s seed derivation below.
+    /// See initialise_extra_account_metas_list.rs for why a literal seed won't fit.
+    #[account(address = Pubkey::new_from_array(POLICY_US_ACCREDITED))]
+    pub policy_marker: UncheckedAccount<'info>,
+
+    /// The buyer's eligibility credential, owned by the sibling
+    /// `eligibility-credential` program. Anchor's `Account<'info, T>` checks
+    /// both the discriminator and that the account is owned by
+    /// `EligibilityCredential::owner()` (== eligibility_credential::ID), so
+    /// a missing credential fails here with `AccountNotInitialized` before
+    /// `assert_eligible` ever runs.
     #[account(
-        seeds = [b"gate", destination_token_account.owner.as_ref()],
+        seeds = [
+            b"eligibility",
+            destination_token_account.owner.as_ref(),
+            POLICY_US_ACCREDITED.as_ref(),
+        ],
         bump,
+        seeds::program = eligibility_credential_program.key(),
     )]
-    pub wallet_gate: Account<'info, WalletGate>,
+    pub credential: Account<'info, EligibilityCredential>,
 }
 
 impl<'info> TransferHook<'info> {
-    pub fn assert_allowed(&self) -> Result<()> {
-        if !self.wallet_gate.allowed {
-            return err!(GateError::NotAllowed);
+    pub fn assert_eligible(&self) -> Result<()> {
+        match self.credential.status {
+            CredentialStatus::Revoked => return err!(GateError::CredentialRevoked),
+            CredentialStatus::Expired => return err!(GateError::CredentialExpired),
+            CredentialStatus::Valid => {}
         }
+
+        if Clock::get()?.unix_timestamp >= self.credential.expires_at {
+            return err!(GateError::CredentialExpired);
+        }
+
         Ok(())
     }
 
