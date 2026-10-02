@@ -8,4 +8,4 @@ crate-type = ["cdylib", "lib"]
 name = "encrypted_ixs"
 
 [dependencies]
-arcis = "=0.8.5"
+arcis = "=0.15.0"

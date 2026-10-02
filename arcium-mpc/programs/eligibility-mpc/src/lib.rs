@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use arcium_anchor::prelude::*;
 use arcium_client::idl::arcium::types::{CallbackAccount, CircuitSource, OffChainCircuitSource};
-use arcium_macros::circuit_hash;
+use arcium_macros::{check_args, circuit_hash};
 
 declare_id!("4Fdcz9uK5SKnH5X5XAfwfH1bD1oefpz3LLLRbaN7zTbh");
 
@@ -19,19 +19,19 @@ pub mod eligibility_mpc {
     pub fn init_check_eligibility_comp_def(
         ctx: Context<InitCheckEligibilityCompDef>,
     ) -> Result<()> {
-        init_comp_def(
+        init_computation_def(
             ctx.accounts,
             Some(CircuitSource::OffChain(OffChainCircuitSource {
                 source: "https://raw.githubusercontent.com/Emmythefirst/Pyle/main/arcium-mpc/build/check_eligibility.arcis".to_string(),
                 hash: circuit_hash!("check_eligibility"),
             })),
-            None,
         )?;
         Ok(())
     }
 
     // ─── Check eligibility: queue the MPC computation ──────────────────────
 
+    #[check_args]
     pub fn check_eligibility(
         ctx: Context<CheckEligibility>,
         computation_offset: u64,
@@ -42,10 +42,20 @@ pub mod eligibility_mpc {
     ) -> Result<()> {
         ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
 
+        // BLOCKED (progress.md §12.6): reading/writing any account field here,
+        // including a plain ctx.accounts.payer.key(), crashes at runtime with
+        // "Access violation ... in unallocated region" -- root-caused via
+        // checkpoint logging to a real anchor-lang 1.0.2 bug in init_if_needed
+        // codegen (fixed in 1.2.0 by anchor-lang PR #4675), which
+        // arcium-anchor@0.15.0 hard-pins us to. A vendored-patch workaround
+        // was attempted and reverted: it fixes this conflict but immediately
+        // hits the same sha2/digest version-bucket conflict that forced this
+        // workspace to be isolated from Pyle's main one in the first place.
         let attestation = &mut ctx.accounts.attestation_account;
         attestation.wallet = ctx.accounts.payer.key();
         attestation.bump = ctx.bumps.attestation_account;
 
+        #[args("check_eligibility")]
         let args = ArgBuilder::new()
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
@@ -67,6 +77,7 @@ pub mod eligibility_mpc {
             )?],
             1,
             0,
+            200_000,
         )?;
         Ok(())
     }
@@ -182,21 +193,21 @@ pub struct CheckEligibility<'info> {
 
     #[account(
         mut,
-        address = derive_mempool_pda!(mxe_account, ErrorCode::ClusterNotSet)
+        address = derive_mempool_pda!(mxe_account)
     )]
     /// CHECK: mempool_account, checked by the arcium program.
     pub mempool_account: UncheckedAccount<'info>,
 
     #[account(
         mut,
-        address = derive_execpool_pda!(mxe_account, ErrorCode::ClusterNotSet)
+        address = derive_execpool_pda!(mxe_account)
     )]
     /// CHECK: executing_pool, checked by the arcium program.
     pub executing_pool: UncheckedAccount<'info>,
 
     #[account(
         mut,
-        address = derive_comp_pda!(computation_offset, mxe_account, ErrorCode::ClusterNotSet)
+        address = derive_comp_pda!(computation_offset, mxe_account)
     )]
     /// CHECK: computation_account, checked by the arcium program.
     pub computation_account: UncheckedAccount<'info>,
@@ -206,7 +217,7 @@ pub struct CheckEligibility<'info> {
 
     #[account(
         mut,
-        address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet)
+        address = derive_cluster_pda!(mxe_account)
     )]
     pub cluster_account: Account<'info, Cluster>,
 
@@ -241,13 +252,13 @@ pub struct CheckEligibilityCallback<'info> {
     pub computation_account: UncheckedAccount<'info>,
 
     #[account(
-        address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet)
+        address = derive_cluster_pda!(mxe_account)
     )]
     pub cluster_account: Account<'info, Cluster>,
 
-    #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
+    #[account(address = anchor_lang::solana_program::pubkey::pubkey!("Sysvar1nstructions1111111111111111111111111"))]
     /// CHECK: instructions_sysvar, checked by the account constraint.
-    pub instructions_sysvar: AccountInfo<'info>,
+    pub instructions_sysvar: UncheckedAccount<'info>,
 
     // Extra account: the attestation to write the revealed result into
     #[account(
@@ -276,6 +287,4 @@ pub struct EligibilityComputedEvent {
 pub enum ErrorCode {
     #[msg("The computation was aborted")]
     AbortedComputation,
-    #[msg("Cluster not set")]
-    ClusterNotSet,
 }

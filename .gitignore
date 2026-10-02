@@ -19,5 +19,14 @@ progress.md
 # arcium-mpc/build holds the compiled circuit (.arcis) the MPC cluster
 # fetches via the comp-def's OffChain source URL -- a required deployment
 # artifact, not transient JS build output, so it's exempted from the
-# "build" rule above.
+# "build" rule above. The .lock/.touch files alongside it are arcium build's
+# own transient bookkeeping, not real artifacts, so they stay excluded.
 !arcium-mpc/build
+arcium-mpc/build/*.lock
+arcium-mpc/build/*.touch
+
+# vendored, patched copies of anchor-lang & co used in a (reverted) attempt
+# to work around an upstream arcium-anchor@0.15.0/anchor-lang@1.0.2 bug --
+# see progress.md §12.7. Reproducible from the cargo cache; not worth
+# tracking.
+arcium-mpc/vendor/

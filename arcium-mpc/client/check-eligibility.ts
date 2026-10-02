@@ -182,8 +182,12 @@ export async function checkEligibility(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Event polling -- same resilience pattern as GhostID's
-// pollComputationFinalization / parseBiometricEnrolledEvent, simplified
-// since our result needs no decryption.
+// pollComputationFinalization / parseBiometricEnrolledEvent. That pattern
+// re-fetches up to 40 signatures *and* a getTransaction per signature every
+// 1.5s -- against the public devnet RPC this self-inflicts a 429 storm
+// (reproduced directly: a single run burned through 100+ rate-limited
+// retries without ever getting through). A log subscription avoids polling
+// entirely -- one request to open, then the RPC pushes new logs to us.
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function pollForEligibilityEvent(
@@ -191,31 +195,26 @@ async function pollForEligibilityEvent(
   program: Program<Idl>,
   timeoutMs: number,
 ): Promise<{ finalizeSig: string; eligible: boolean }> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    await new Promise((r) => setTimeout(r, 1500));
-    try {
-      const sigs = await provider.connection.getSignaturesForAddress(
-        program.programId,
-        { limit: 40 },
-        "confirmed",
-      );
-      for (const s of sigs) {
-        const tx = await provider.connection.getTransaction(s.signature, {
-          commitment: "confirmed",
-          maxSupportedTransactionVersion: 0,
-        });
-        const logs = tx?.meta?.logMessages ?? [];
-        const decoded = findEligibilityComputedEvent(logs, program);
+  return new Promise((resolve, reject) => {
+    let subId: number | null = null;
+    const timer = setTimeout(() => {
+      if (subId !== null) provider.connection.removeOnLogsListener(subId).catch(() => {});
+      reject(new Error("Computation did not finalize within timeout"));
+    }, timeoutMs);
+
+    subId = provider.connection.onLogs(
+      program.programId,
+      (logs) => {
+        const decoded = findEligibilityComputedEvent(logs.logs, program);
         if (decoded) {
-          return { finalizeSig: s.signature, eligible: decoded.eligible };
+          clearTimeout(timer);
+          if (subId !== null) provider.connection.removeOnLogsListener(subId).catch(() => {});
+          resolve({ finalizeSig: logs.signature, eligible: decoded.eligible });
         }
-      }
-    } catch {
-      // transient RPC errors -- keep polling, matches GhostID's resilience pattern
-    }
-  }
-  throw new Error("Computation did not finalize within timeout");
+      },
+      "confirmed",
+    );
+  });
 }
 
 function findEligibilityComputedEvent(
