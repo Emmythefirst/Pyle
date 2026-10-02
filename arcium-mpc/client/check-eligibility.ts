@@ -1,0 +1,238 @@
+/**
+ * client/check-eligibility.ts
+ *
+ * Private eligibility check via Arcium MPC, adapted from GhostID's
+ * client/enroll.ts pattern (/home/emmanuel/Privis/ghostid). Key difference:
+ * GhostID's circuits return Enc<Shared, T> (only the requesting client can
+ * decrypt the result), so its client code needs RescueCipher.decrypt() on
+ * the callback output. Our check_eligibility circuit calls .reveal() inside
+ * the circuit instead, so the callback's EligibilityComputedEvent carries a
+ * plain `eligible: bool` already -- no client-side decryption of the result
+ * needed, only of the *inputs* (income/net_worth), which stay MPC-private.
+ */
+
+import * as anchor from "@coral-xyz/anchor";
+import { Program, AnchorProvider, Idl } from "@coral-xyz/anchor";
+import { PublicKey } from "@solana/web3.js";
+import {
+  getArciumProgram,
+  uploadCircuit,
+  getMXEPublicKey,
+  getMXEAccAddress,
+  getMempoolAccAddress,
+  getCompDefAccAddress,
+  getExecutingPoolAccAddress,
+  getComputationAccAddress,
+  getClusterAccAddress,
+  getLookupTableAddress,
+  deserializeLE,
+  RescueCipher,
+  x25519,
+} from "@arcium-hq/client";
+import * as fs from "fs";
+import * as path from "path";
+
+const CLUSTER_OFFSET = 456;
+// sha256("check_eligibility")[0..4] as a little-endian u32 -- must match
+// arcium_anchor::comp_def_offset("check_eligibility"), computed identically
+// on the Rust side (programs/eligibility-mpc/src/lib.rs). Verified by
+// computing both sides independently rather than assumed equal.
+const COMP_DEF_OFFSET_CHECK_ELIGIBILITY = 2353052360;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Comp def initialization
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function initCheckEligibilityCompDefIfNeeded(
+  program: Program<Idl>,
+  provider: AnchorProvider,
+  payerKey: PublicKey,
+): Promise<void> {
+  const compDefAccount = getCompDefAccAddress(
+    program.programId,
+    COMP_DEF_OFFSET_CHECK_ELIGIBILITY as never,
+  );
+  const existing = await provider.connection.getAccountInfo(compDefAccount);
+  if (existing) {
+    console.log("check_eligibility comp def already exists, skipping...");
+    return;
+  }
+
+  const mxeAccount = getMXEAccAddress(program.programId);
+  const arciumProgram = getArciumProgram(provider);
+  const mxeAcc = await arciumProgram.account.mxeAccount.fetch(mxeAccount);
+  const lutAddress = getLookupTableAddress(program.programId, mxeAcc.lutOffsetSlot);
+
+  console.log("Initializing check_eligibility comp def...");
+  await (program as never as { methods: Record<string, (...a: unknown[]) => { accounts: (a: unknown) => { rpc: (o: unknown) => Promise<string> } }> })
+    .methods.initCheckEligibilityCompDef()
+    .accounts({
+      compDefAccount,
+      payer: payerKey,
+      mxeAccount,
+      addressLookupTable: lutAddress,
+    })
+    .rpc({ commitment: "confirmed" });
+
+  const rawCircuit = fs.readFileSync(
+    path.resolve(import.meta.dirname, "../build/check_eligibility.arcis"),
+  );
+  console.log(`Uploading check_eligibility circuit (${rawCircuit.length} bytes)...`);
+  await uploadCircuit(
+    provider,
+    "check_eligibility",
+    program.programId,
+    rawCircuit,
+    true,
+    5,
+    { skipPreflight: true, preflightCommitment: "confirmed", commitment: "confirmed" },
+  );
+  console.log("check_eligibility circuit uploaded and finalized.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Check eligibility
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CheckEligibilityResult {
+  attestationAccount: PublicKey;
+  checkSig: string;
+  finalizeSig: string;
+  eligible: boolean;
+}
+
+export async function checkEligibility(
+  income: bigint,
+  netWorth: bigint,
+  program: Program<Idl>,
+  provider: AnchorProvider,
+  payerKey: PublicKey,
+): Promise<CheckEligibilityResult> {
+  const mxePublicKey = await getMXEPublicKey(provider, program.programId);
+
+  const ephemeralPrivateKey = x25519.utils.randomSecretKey();
+  const ephemeralPublicKey = x25519.getPublicKey(ephemeralPrivateKey);
+  const sharedSecret = x25519.getSharedSecret(ephemeralPrivateKey, mxePublicKey);
+
+  const cipher = new RescueCipher(sharedSecret);
+  const nonceArr = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(nonceArr);
+  const nonce = Buffer.from(nonceArr);
+  // income/net_worth stay as independent u64 values -- no packing needed
+  // (unlike GhostID's 128-byte-embedding-into-8-u128s scheme).
+  const ciphertexts: number[][] = cipher.encrypt([income, netWorth], nonce);
+
+  const [attestationAccount] = PublicKey.findProgramAddressSync(
+    [Buffer.from("eligibility-attestation"), payerKey.toBuffer()],
+    program.programId,
+  );
+
+  const offsetArr = new Uint8Array(8);
+  globalThis.crypto.getRandomValues(offsetArr);
+  const computationOffset = new anchor.BN(Buffer.from(offsetArr).toString("hex"), "hex");
+
+  const tx = await (program as never as { methods: Record<string, (...a: unknown[]) => { accountsPartial: (a: unknown) => { transaction: () => Promise<anchor.web3.Transaction> } }> })
+    .methods.checkEligibility(
+      computationOffset,
+      Array.from(ciphertexts[0]),
+      Array.from(ciphertexts[1]),
+      Array.from(ephemeralPublicKey),
+      new anchor.BN(deserializeLE(nonce).toString()),
+    )
+    .accountsPartial({
+      payer: payerKey,
+      attestationAccount,
+      computationAccount: getComputationAccAddress(CLUSTER_OFFSET, computationOffset),
+      clusterAccount: getClusterAccAddress(CLUSTER_OFFSET),
+      mxeAccount: getMXEAccAddress(program.programId),
+      mempoolAccount: getMempoolAccAddress(CLUSTER_OFFSET),
+      executingPool: getExecutingPoolAccAddress(CLUSTER_OFFSET),
+      compDefAccount: getCompDefAccAddress(
+        program.programId,
+        COMP_DEF_OFFSET_CHECK_ELIGIBILITY as never,
+      ),
+    })
+    .transaction();
+
+  const { blockhash, lastValidBlockHeight } =
+    await provider.connection.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = blockhash;
+  tx.lastValidBlockHeight = lastValidBlockHeight;
+  tx.feePayer = payerKey;
+
+  const signedTx = await provider.wallet.signTransaction(tx);
+  const checkSig = await provider.connection.sendRawTransaction(signedTx.serialize(), {
+    skipPreflight: true,
+  });
+  await provider.connection.confirmTransaction(
+    { signature: checkSig, blockhash, lastValidBlockHeight },
+    "confirmed",
+  );
+  console.log("check_eligibility sig:", checkSig);
+
+  console.log("Awaiting check_eligibility MPC finalization (up to 10 min)...");
+  const { finalizeSig, eligible } = await pollForEligibilityEvent(
+    provider,
+    program,
+    1800000,
+  );
+
+  return { attestationAccount, checkSig, finalizeSig, eligible };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Event polling -- same resilience pattern as GhostID's
+// pollComputationFinalization / parseBiometricEnrolledEvent, simplified
+// since our result needs no decryption.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function pollForEligibilityEvent(
+  provider: AnchorProvider,
+  program: Program<Idl>,
+  timeoutMs: number,
+): Promise<{ finalizeSig: string; eligible: boolean }> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      const sigs = await provider.connection.getSignaturesForAddress(
+        program.programId,
+        { limit: 40 },
+        "confirmed",
+      );
+      for (const s of sigs) {
+        const tx = await provider.connection.getTransaction(s.signature, {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        });
+        const logs = tx?.meta?.logMessages ?? [];
+        const decoded = findEligibilityComputedEvent(logs, program);
+        if (decoded) {
+          return { finalizeSig: s.signature, eligible: decoded.eligible };
+        }
+      }
+    } catch {
+      // transient RPC errors -- keep polling, matches GhostID's resilience pattern
+    }
+  }
+  throw new Error("Computation did not finalize within timeout");
+}
+
+function findEligibilityComputedEvent(
+  logs: string[],
+  program: Program<Idl>,
+): { wallet: PublicKey; eligible: boolean } | null {
+  for (const log of logs) {
+    if (log.startsWith("Program data: ")) {
+      try {
+        const decoded = program.coder.events.decode(log.slice("Program data: ".length));
+        if (decoded?.name === "eligibilityComputedEvent") {
+          return decoded.data as { wallet: PublicKey; eligible: boolean };
+        }
+      } catch {
+        // not our event -- keep scanning
+      }
+    }
+  }
+  return null;
+}

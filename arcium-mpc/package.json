@@ -1,0 +1,18 @@
+{
+  "name": "pyle-arcium-mpc",
+  "private": true,
+  "license": "ISC",
+  "scripts": {
+    "run": "tsx client/run-check-eligibility.ts"
+  },
+  "dependencies": {
+    "@arcium-hq/client": "0.15.0",
+    "@coral-xyz/anchor": "^0.32.1"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.1.0",
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.3"
+  }
+}

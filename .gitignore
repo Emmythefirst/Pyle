@@ -15,3 +15,9 @@ build
 
 # local-only project notes, never pushed
 progress.md
+
+# arcium-mpc/build holds the compiled circuit (.arcis) the MPC cluster
+# fetches via the comp-def's OffChain source URL -- a required deployment
+# artifact, not transient JS build output, so it's exempted from the
+# "build" rule above.
+!arcium-mpc/build
