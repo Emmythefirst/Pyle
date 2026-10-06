@@ -5,7 +5,7 @@ use arcium_macros::{check_args, circuit_hash};
 
 declare_id!("4Fdcz9uK5SKnH5X5XAfwfH1bD1oefpz3LLLRbaN7zTbh");
 
-const COMP_DEF_OFFSET_CHECK_ELIGIBILITY: u32 = comp_def_offset("check_eligibility");
+const COMP_DEF_OFFSET_CHECK_ELIGIBILITY: u32 = comp_def_offset("check_eligibility_v2");
 
 // space = discriminator(8) + wallet(32) + eligible(1) + computed_at(8) + bump(1)
 const ATTESTATION_ACCOUNT_SPACE: usize = 8 + 32 + 1 + 8 + 1;
@@ -22,10 +22,31 @@ pub mod eligibility_mpc {
         init_computation_def(
             ctx.accounts,
             Some(CircuitSource::OffChain(OffChainCircuitSource {
-                source: "https://raw.githubusercontent.com/Emmythefirst/Pyle/main/arcium-mpc/build/check_eligibility.arcis".to_string(),
-                hash: circuit_hash!("check_eligibility"),
+                source: "https://raw.githubusercontent.com/Emmythefirst/Pyle/main/arcium-mpc/build/check_eligibility_v2.arcis".to_string(),
+                hash: circuit_hash!("check_eligibility_v2"),
             })),
         )?;
+        Ok(())
+    }
+
+    // ─── One-time setup: create the two accounts check_eligibility needs ──
+    //
+    // Split out from check_eligibility deliberately (progress.md §12.9):
+    // combining account-creation CPIs (init_if_needed) with later reads of
+    // *other* accounts in the same instruction crashes at runtime under
+    // anchor-lang 1.0.2 (arcium-anchor@0.15.0's hard-pinned version) --
+    // root-caused to a real, upstream, already-fixed-in-1.2.0 bug. By the
+    // time check_eligibility runs, both accounts already exist, so its own
+    // try_accounts triggers zero creation CPIs. `wallet` is taken as an
+    // explicit argument rather than read via `ctx.accounts.payer.key()`
+    // after the CPIs below, since that exact read is what crashed.
+    pub fn init_eligibility_accounts(
+        ctx: Context<InitEligibilityAccounts>,
+        wallet: Pubkey,
+    ) -> Result<()> {
+        ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
+        ctx.accounts.attestation_account.wallet = wallet;
+        ctx.accounts.attestation_account.bump = ctx.bumps.attestation_account;
         Ok(())
     }
 
@@ -40,22 +61,7 @@ pub mod eligibility_mpc {
         pubkey: [u8; 32],
         nonce: u128,
     ) -> Result<()> {
-        ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
-
-        // BLOCKED (progress.md §12.6): reading/writing any account field here,
-        // including a plain ctx.accounts.payer.key(), crashes at runtime with
-        // "Access violation ... in unallocated region" -- root-caused via
-        // checkpoint logging to a real anchor-lang 1.0.2 bug in init_if_needed
-        // codegen (fixed in 1.2.0 by anchor-lang PR #4675), which
-        // arcium-anchor@0.15.0 hard-pins us to. A vendored-patch workaround
-        // was attempted and reverted: it fixes this conflict but immediately
-        // hits the same sha2/digest version-bucket conflict that forced this
-        // workspace to be isolated from Pyle's main one in the first place.
-        let attestation = &mut ctx.accounts.attestation_account;
-        attestation.wallet = ctx.accounts.payer.key();
-        attestation.bump = ctx.bumps.attestation_account;
-
-        #[args("check_eligibility")]
+        #[args("check_eligibility_v2")]
         let args = ArgBuilder::new()
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
@@ -84,7 +90,7 @@ pub mod eligibility_mpc {
 
     // ─── Callback: receives the revealed (plaintext) eligibility bit ───────
 
-    #[arcium_callback(encrypted_ix = "check_eligibility")]
+    #[arcium_callback(encrypted_ix = "check_eligibility_v2")]
     pub fn check_eligibility_callback(
         ctx: Context<CheckEligibilityCallback>,
         output: SignedComputationOutputs<CheckEligibilityOutput>,
@@ -94,7 +100,12 @@ pub mod eligibility_mpc {
             &ctx.accounts.computation_account,
         ) {
             Ok(CheckEligibilityOutput { field_0 }) => field_0,
-            Err(_) => return Err(ErrorCode::AbortedComputation.into()),
+            // Propagate the real error instead of masking it -- see
+            // progress.md §12.10 for why this was worth separating out.
+            Err(e) => {
+                msg!("verify_output failed: {:?}", e);
+                return Err(e);
+            }
         };
 
         let attestation = &mut ctx.accounts.attestation_account;
@@ -136,7 +147,7 @@ pub struct EligibilityAttestation {
 // Instruction contexts
 // ─────────────────────────────────────────────────────────────────────────────
 
-#[init_computation_definition_accounts("check_eligibility", payer)]
+#[init_computation_definition_accounts("check_eligibility_v2", payer)]
 #[derive(Accounts)]
 pub struct InitCheckEligibilityCompDef<'info> {
     #[account(mut)]
@@ -162,10 +173,9 @@ pub struct InitCheckEligibilityCompDef<'info> {
     pub system_program: Program<'info, System>,
 }
 
-#[queue_computation_accounts("check_eligibility", payer)]
 #[derive(Accounts)]
-#[instruction(computation_offset: u64)]
-pub struct CheckEligibility<'info> {
+#[instruction(wallet: Pubkey)]
+pub struct InitEligibilityAccounts<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -173,7 +183,7 @@ pub struct CheckEligibility<'info> {
         init_if_needed,
         space = ATTESTATION_ACCOUNT_SPACE,
         payer = payer,
-        seeds = [b"eligibility-attestation", payer.key().as_ref()],
+        seeds = [b"eligibility-attestation", wallet.as_ref()],
         bump,
     )]
     pub attestation_account: Account<'info, EligibilityAttestation>,
@@ -188,8 +198,42 @@ pub struct CheckEligibility<'info> {
     )]
     pub sign_pda_account: Account<'info, ArciumSignerAccount>,
 
+    pub system_program: Program<'info, System>,
+}
+
+#[queue_computation_accounts("check_eligibility_v2", payer)]
+#[derive(Accounts)]
+#[instruction(computation_offset: u64)]
+pub struct CheckEligibility<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    // Pre-created by init_eligibility_accounts -- no init_if_needed here, so
+    // try_accounts for this instruction triggers zero creation CPIs.
+    //
+    // Boxed throughout this struct (not just the two already boxed below) --
+    // a second, distinct stack-overflow crash (progress.md §12.9) showed up
+    // even with zero CPIs involved, consistent with try_accounts for this
+    // 13-field struct genuinely exceeding the 4096-byte BPF stack frame
+    // limit -- the same class of issue pool_account/clock_account were
+    // already boxed for, just not everywhere it turned out to matter.
+    #[account(
+        mut,
+        seeds = [b"eligibility-attestation", payer.key().as_ref()],
+        bump = attestation_account.bump,
+    )]
+    pub attestation_account: Box<Account<'info, EligibilityAttestation>>,
+
+    #[account(
+        mut,
+        seeds = [&SIGN_PDA_SEED],
+        bump = sign_pda_account.bump,
+        address = derive_sign_pda!(),
+    )]
+    pub sign_pda_account: Box<Account<'info, ArciumSignerAccount>>,
+
     #[account(address = derive_mxe_pda!())]
-    pub mxe_account: Account<'info, MXEAccount>,
+    pub mxe_account: Box<Account<'info, MXEAccount>>,
 
     #[account(
         mut,
@@ -213,13 +257,13 @@ pub struct CheckEligibility<'info> {
     pub computation_account: UncheckedAccount<'info>,
 
     #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_CHECK_ELIGIBILITY))]
-    pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
+    pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
 
     #[account(
         mut,
         address = derive_cluster_pda!(mxe_account)
     )]
-    pub cluster_account: Account<'info, Cluster>,
+    pub cluster_account: Box<Account<'info, Cluster>>,
 
     #[account(
         mut,
@@ -237,16 +281,16 @@ pub struct CheckEligibility<'info> {
     pub arcium_program: Program<'info, Arcium>,
 }
 
-#[callback_accounts("check_eligibility")]
+#[callback_accounts("check_eligibility_v2")]
 #[derive(Accounts)]
 pub struct CheckEligibilityCallback<'info> {
     pub arcium_program: Program<'info, Arcium>,
 
     #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_CHECK_ELIGIBILITY))]
-    pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
+    pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
 
     #[account(address = derive_mxe_pda!())]
-    pub mxe_account: Account<'info, MXEAccount>,
+    pub mxe_account: Box<Account<'info, MXEAccount>>,
 
     /// CHECK: computation_account, checked by arcium program.
     pub computation_account: UncheckedAccount<'info>,
@@ -254,7 +298,7 @@ pub struct CheckEligibilityCallback<'info> {
     #[account(
         address = derive_cluster_pda!(mxe_account)
     )]
-    pub cluster_account: Account<'info, Cluster>,
+    pub cluster_account: Box<Account<'info, Cluster>>,
 
     #[account(address = anchor_lang::solana_program::pubkey::pubkey!("Sysvar1nstructions1111111111111111111111111"))]
     /// CHECK: instructions_sysvar, checked by the account constraint.
@@ -266,7 +310,7 @@ pub struct CheckEligibilityCallback<'info> {
         seeds = [b"eligibility-attestation", attestation_account.wallet.as_ref()],
         bump = attestation_account.bump,
     )]
-    pub attestation_account: Account<'info, EligibilityAttestation>,
+    pub attestation_account: Box<Account<'info, EligibilityAttestation>>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -277,14 +321,4 @@ pub struct CheckEligibilityCallback<'info> {
 pub struct EligibilityComputedEvent {
     pub wallet: Pubkey,
     pub eligible: bool,
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Errors
-// ─────────────────────────────────────────────────────────────────────────────
-
-#[error_code]
-pub enum ErrorCode {
-    #[msg("The computation was aborted")]
-    AbortedComputation,
 }

@@ -3,7 +3,11 @@ import { Idl } from "@coral-xyz/anchor";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { initCheckEligibilityCompDefIfNeeded, checkEligibility } from "./check-eligibility";
+import {
+  initCheckEligibilityCompDefIfNeeded,
+  initEligibilityAccountsIfNeeded,
+  checkEligibility,
+} from "./check-eligibility";
 
 function loadKeypair(filePath: string): anchor.web3.Keypair {
   const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -31,6 +35,9 @@ async function main() {
 
   console.log("\n=== Initializing check_eligibility comp def (once) ===");
   await initCheckEligibilityCompDefIfNeeded(program, provider, payer.publicKey);
+
+  console.log("\n=== Initializing eligibility accounts (once) ===");
+  await initEligibilityAccountsIfNeeded(program, provider, payer.publicKey);
 
   console.log("\n=== Case A: income $250k (qualifies on income alone) -- expect eligible=true ===");
   const resultA = await checkEligibility(250_000n, 50_000n, program, provider, payer.publicKey);

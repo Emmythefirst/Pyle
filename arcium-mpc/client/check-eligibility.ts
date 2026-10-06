@@ -25,6 +25,7 @@ import {
   getComputationAccAddress,
   getClusterAccAddress,
   getLookupTableAddress,
+  getArciumSignerAccAddress,
   deserializeLE,
   RescueCipher,
   x25519,
@@ -32,12 +33,46 @@ import {
 import * as fs from "fs";
 import * as path from "path";
 
+// A confirmed transaction isn't necessarily a successful one -- confirmation
+// just means it landed on the ledger, with or without an error. Learned this
+// the hard way: earlier versions of this script treated "confirmed" as "ok"
+// and reported a crashing transaction as "awaiting MPC finalization" for 30
+// minutes. Always check `value.err` explicitly.
+async function sendAndConfirm(
+  provider: AnchorProvider,
+  tx: anchor.web3.Transaction,
+  payerKey: PublicKey,
+  label: string,
+): Promise<string> {
+  const { blockhash, lastValidBlockHeight } =
+    await provider.connection.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = blockhash;
+  tx.lastValidBlockHeight = lastValidBlockHeight;
+  tx.feePayer = payerKey;
+
+  const signedTx = await provider.wallet.signTransaction(tx);
+  const sig = await provider.connection.sendRawTransaction(signedTx.serialize(), {
+    skipPreflight: true,
+  });
+  const result = await provider.connection.confirmTransaction(
+    { signature: sig, blockhash, lastValidBlockHeight },
+    "confirmed",
+  );
+  if (result.value.err) {
+    throw new Error(`${label} failed: ${JSON.stringify(result.value.err)} (sig: ${sig})`);
+  }
+  console.log(`${label} sig:`, sig);
+  return sig;
+}
+
 const CLUSTER_OFFSET = 456;
-// sha256("check_eligibility")[0..4] as a little-endian u32 -- must match
-// arcium_anchor::comp_def_offset("check_eligibility"), computed identically
-// on the Rust side (programs/eligibility-mpc/src/lib.rs). Verified by
-// computing both sides independently rather than assumed equal.
-const COMP_DEF_OFFSET_CHECK_ELIGIBILITY = 2353052360;
+// sha256("check_eligibility_v2")[0..4] as a little-endian u32 -- must match
+// arcium_anchor::comp_def_offset("check_eligibility_v2"), computed
+// identically on the Rust side (programs/eligibility-mpc/src/lib.rs).
+// Verified by computing both sides independently rather than assumed equal.
+// _v2 because the original comp-def's on-chain hash went stale when the
+// circuit was rebuilt under a newer arcis version -- see progress.md §12.10.
+const COMP_DEF_OFFSET_CHECK_ELIGIBILITY = 1061722949;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Comp def initialization
@@ -75,12 +110,12 @@ export async function initCheckEligibilityCompDefIfNeeded(
     .rpc({ commitment: "confirmed" });
 
   const rawCircuit = fs.readFileSync(
-    path.resolve(import.meta.dirname, "../build/check_eligibility.arcis"),
+    path.resolve(import.meta.dirname, "../build/check_eligibility_v2.arcis"),
   );
   console.log(`Uploading check_eligibility circuit (${rawCircuit.length} bytes)...`);
   await uploadCircuit(
     provider,
-    "check_eligibility",
+    "check_eligibility_v2",
     program.programId,
     rawCircuit,
     true,
@@ -88,6 +123,39 @@ export async function initCheckEligibilityCompDefIfNeeded(
     { skipPreflight: true, preflightCommitment: "confirmed", commitment: "confirmed" },
   );
   console.log("check_eligibility circuit uploaded and finalized.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// One-time setup -- see lib.rs's init_eligibility_accounts for why this is
+// split out from check_eligibility (progress.md §12.9).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function initEligibilityAccountsIfNeeded(
+  program: Program<Idl>,
+  provider: AnchorProvider,
+  payerKey: PublicKey,
+): Promise<void> {
+  const [attestationAccount] = PublicKey.findProgramAddressSync(
+    [Buffer.from("eligibility-attestation"), payerKey.toBuffer()],
+    program.programId,
+  );
+  const existing = await provider.connection.getAccountInfo(attestationAccount);
+  if (existing) {
+    console.log("eligibility accounts already initialized, skipping...");
+    return;
+  }
+
+  const tx = await (program as never as { methods: Record<string, (...a: unknown[]) => { accounts: (a: unknown) => { transaction: () => Promise<anchor.web3.Transaction> } }> })
+    .methods.initEligibilityAccounts(payerKey)
+    .accounts({
+      payer: payerKey,
+      attestationAccount,
+      signPdaAccount: getArciumSignerAccAddress(program.programId),
+      systemProgram: anchor.web3.SystemProgram.programId,
+    })
+    .transaction();
+
+  await sendAndConfirm(provider, tx, payerKey, "init_eligibility_accounts");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,6 +210,7 @@ export async function checkEligibility(
     .accountsPartial({
       payer: payerKey,
       attestationAccount,
+      signPdaAccount: getArciumSignerAccAddress(program.programId),
       computationAccount: getComputationAccAddress(CLUSTER_OFFSET, computationOffset),
       clusterAccount: getClusterAccAddress(CLUSTER_OFFSET),
       mxeAccount: getMXEAccAddress(program.programId),
@@ -154,21 +223,7 @@ export async function checkEligibility(
     })
     .transaction();
 
-  const { blockhash, lastValidBlockHeight } =
-    await provider.connection.getLatestBlockhash("confirmed");
-  tx.recentBlockhash = blockhash;
-  tx.lastValidBlockHeight = lastValidBlockHeight;
-  tx.feePayer = payerKey;
-
-  const signedTx = await provider.wallet.signTransaction(tx);
-  const checkSig = await provider.connection.sendRawTransaction(signedTx.serialize(), {
-    skipPreflight: true,
-  });
-  await provider.connection.confirmTransaction(
-    { signature: checkSig, blockhash, lastValidBlockHeight },
-    "confirmed",
-  );
-  console.log("check_eligibility sig:", checkSig);
+  const checkSig = await sendAndConfirm(provider, tx, payerKey, "check_eligibility");
 
   console.log("Awaiting check_eligibility MPC finalization (up to 10 min)...");
   const { finalizeSig, eligible } = await pollForEligibilityEvent(
