@@ -12,26 +12,3 @@ codegen-units = 1
 opt-level = 3
 incremental = false
 codegen-units = 1
-
-# Attempted 2026-10-02: patch anchor-lang (and siblings) to 1.2.0's fixed
-# init_if_needed codegen while keeping arcium-anchor's exact =1.0.2 pin
-# satisfied (see vendor/ and progress.md §12 for the full writeup). Reverted:
-# it fixed that conflict but immediately surfaced the same sha2/digest
-# version-bucket conflict (0.11.0 vs 0.11.0-pre.4) that originally forced
-# this workspace to be isolated from Pyle's main one -- fixing it further
-# would mean patching cryptographic primitive crates directly, too risky to
-# pursue. vendor/ is kept for reference; this patch section intentionally
-# stays commented out.
-# [patch.crates-io]
-# anchor-lang = { path = "vendor/anchor-lang" }
-# anchor-lang-error = { path = "vendor/anchor-lang-error" }
-# anchor-syn = { path = "vendor/anchor-syn" }
-# anchor-attribute-access-control = { path = "vendor/anchor-attribute-access-control" }
-# anchor-attribute-account = { path = "vendor/anchor-attribute-account" }
-# anchor-attribute-constant = { path = "vendor/anchor-attribute-constant" }
-# anchor-attribute-error = { path = "vendor/anchor-attribute-error" }
-# anchor-attribute-event = { path = "vendor/anchor-attribute-event" }
-# anchor-attribute-program = { path = "vendor/anchor-attribute-program" }
-# anchor-derive-accounts = { path = "vendor/anchor-derive-accounts" }
-# anchor-derive-serde = { path = "vendor/anchor-derive-serde" }
-# anchor-derive-space = { path = "vendor/anchor-derive-space" }
