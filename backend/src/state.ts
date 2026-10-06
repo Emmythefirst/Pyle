@@ -2,6 +2,7 @@ import {
   BlockedTransferEvent,
   CredentialActivityEvent,
   CredentialedWalletCountEvent,
+  MpcAttestationEvent,
   PoolStateEvent,
   PyleEvent,
   SuccessfulBuyEvent,
@@ -19,6 +20,7 @@ export interface PyleState {
   credentialActivity: CredentialActivityEvent[];
   poolState: PoolStateEvent;
   credentialedWalletCount: number;
+  mpcAttestations: MpcAttestationEvent[];
 }
 
 export const state: PyleState = {
@@ -33,6 +35,7 @@ export const state: PyleState = {
     percentComplete: null,
   },
   credentialedWalletCount: 0,
+  mpcAttestations: [],
 };
 
 type Listener = (event: PyleEvent) => void;
@@ -69,6 +72,11 @@ export function recordCredentialActivity(event: CredentialActivityEvent): void {
 
 export function updatePoolState(event: PoolStateEvent): void {
   state.poolState = event;
+  broadcast(event);
+}
+
+export function recordMpcAttestation(event: MpcAttestationEvent): void {
+  pushBounded(state.mpcAttestations, event);
   broadcast(event);
 }
 

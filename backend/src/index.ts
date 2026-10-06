@@ -5,6 +5,7 @@ import { startServer } from "./server.js";
 import { watchTransferHook } from "./watchers/transferHookWatcher.js";
 import { watchCredentialActivity, startCredentialCountPolling } from "./watchers/credentialWatcher.js";
 import { startPoolPolling } from "./watchers/poolWatcher.js";
+import { watchMpcAttestations } from "./watchers/mpcWatcher.js";
 
 async function main() {
   const connection = new Connection(RPC_URL, "confirmed");
@@ -15,7 +16,8 @@ async function main() {
   watchCredentialActivity(connection);
   startCredentialCountPolling(connection);
   startPoolPolling(connection);
-  startServer();
+  watchMpcAttestations(connection);
+  startServer(connection);
 }
 
 main().catch((err) => {

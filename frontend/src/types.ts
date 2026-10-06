@@ -1,12 +1,11 @@
-// Event shapes broadcast over the WebSocket feed. Kept flat and small --
-// this is the "Compliance + Market Terminal" dashboard's data source
-// (progress.md §1), not a general event bus.
+// Mirrors backend/src/types.ts -- duplicated rather than shared across
+// packages since frontend and backend are separate npm workspaces.
 
 export interface BlockedTransferEvent {
   type: "blocked_transfer";
-  wallet: string | null; // null only if the destination account couldn't be resolved
+  wallet: string | null;
   reason: string;
-  amount: string | null; // raw token amount (base units), as a string (can exceed JS safe-int range)
+  amount: string | null;
   signature: string;
   timestamp: number;
 }
@@ -55,3 +54,35 @@ export type PyleEvent =
   | PoolStateEvent
   | CredentialedWalletCountEvent
   | MpcAttestationEvent;
+
+export interface PyleState {
+  blockedTransfers: BlockedTransferEvent[];
+  successfulBuys: SuccessfulBuyEvent[];
+  credentialActivity: CredentialActivityEvent[];
+  poolState: PoolStateEvent;
+  credentialedWalletCount: number;
+  mpcAttestations: MpcAttestationEvent[];
+}
+
+export interface CredentialView {
+  wallet: string;
+  exists: boolean;
+  status?: "Valid" | "Revoked" | "Expired";
+  issuedAt?: number;
+  expiresAt?: number;
+}
+
+export interface BuyResult {
+  ok: boolean;
+  signature?: string;
+  error?: string;
+  logs?: string[];
+}
+
+export interface VerifyResult {
+  eligible: boolean;
+  checkSig: string;
+  finalizeSig: string;
+  credentialIssued: boolean;
+  credentialSig: string | null;
+}
