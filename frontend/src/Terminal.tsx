@@ -57,6 +57,8 @@ export function Terminal({
   const [quote, setQuote] = useState(START);
   const [phase, setPhase] = useState<"curve" | "complete" | "open">("curve");
   const [grading, setGrading] = useState(false);
+  const [gradModal, setGradModal] = useState(false);
+  const [gradStep, setGradStep] = useState(0);
   const lastBuyCount = useRef(state.successfulBuys.length);
 
   useEffect(() => {
@@ -76,7 +78,13 @@ export function Terminal({
           clearInterval(iv);
           setPhase("complete");
           setGrading(false);
-          setTimeout(() => setPhase("open"), 1800);
+          setGradModal(true);
+          setGradStep(1);
+          setTimeout(() => setGradStep(2), 1400);
+          setTimeout(() => {
+            setPhase("open");
+            setGradStep(3);
+          }, 4400);
         }
         return next;
       });
@@ -86,7 +94,27 @@ export function Terminal({
     setQuote(START);
     setPhase("curve");
     setGrading(false);
+    setGradModal(false);
+    setGradStep(0);
   };
+
+  const gradSteps = [
+    { title: "Curve complete", detail: `quoteReserve reached ${T} SOL` },
+    { title: "Transfer hook revoked", detail: "DBC: TransferHook Update + SetAuthority" },
+    { title: "Migrated to DAMM v2", detail: "migrateToDammV2 · pool open (illustrative)" },
+  ].map((step, i) => {
+    const done = gradStep > i + 1 || gradStep === 3;
+    const active = gradStep === i + 1 && gradStep < 3;
+    return {
+      ...step,
+      mark: done ? "✓" : String(i + 1),
+      bg: done ? tint.lime : active ? "#ecebe6" : "rgba(236,235,230,0.06)",
+      fg: done ? C.lime : active ? "#0b0c0b" : C.dim,
+      color: done || active ? C.ink : C.dim,
+      anim: active ? "pyPulse 1s infinite" : "none",
+    };
+  });
+  const gradBusy = gradStep < 3;
 
   const cred = credentials[activeWallet];
   const gated = phase === "curve";
@@ -102,6 +130,7 @@ export function Terminal({
     .slice(0, 60);
 
   return (
+    <>
     <main style={s("flex:1;display:flex;flex-wrap:wrap;align-items:stretch")}>
       <div style={s("flex:1 1 640px;min-width:0;padding:22px 24px 32px;display:flex;flex-direction:column;gap:18px;box-sizing:border-box")}>
         <div style={s("display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px")}>
@@ -222,7 +251,9 @@ export function Terminal({
                 <div
                   key={e.signature}
                   style={{
-                    ...s("display:grid;grid-template-columns:64px 74px minmax(90px,0.8fr) minmax(140px,1.6fr) 80px 90px;gap:12px;align-items:center;padding:9px 16px;border-bottom:1px solid rgba(236,235,230,0.05)"),
+                    ...s(
+                      "display:grid;grid-template-columns:64px 74px minmax(90px,0.8fr) minmax(140px,1.6fr) 80px 90px;gap:12px;align-items:center;padding:9px 16px;border-bottom:1px solid rgba(236,235,230,0.05);animation:pyIn .35s ease-out",
+                    ),
                     background: isBlocked ? "rgba(255,107,91,0.035)" : "transparent",
                   }}
                 >
@@ -318,6 +349,56 @@ export function Terminal({
         )}
       </aside>
     </main>
+    {gradModal && (
+      <div style={s("position:fixed;inset:0;z-index:20;background:rgba(6,7,6,0.78);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:24px;animation:pyFade .3s")}>
+        <div style={s("width:100%;max-width:560px;background:#111311;border:1px solid rgba(236,235,230,0.12);border-radius:18px;padding:30px;display:flex;flex-direction:column;gap:22px;box-shadow:0 30px 80px rgba(0,0,0,0.5)")}>
+          <div style={s("display:flex;flex-direction:column;gap:10px")}>
+            <span style={{ ...s("font:500 12px 'Geist Mono',monospace"), color: gradStep < 3 ? C.amber : C.blue }}>
+              {gradStep < 3 ? "GRADUATING…" : "GRADUATED · DAMM V2"}
+            </span>
+            <span style={s("font-weight:500;font-size:30px;letter-spacing:-0.03em;line-height:1.1")}>
+              ACME has <span style={s("font-family:'Instrument Serif',serif;font-style:italic;font-weight:400")}>graduated</span>
+            </span>
+            <span style={s("font-size:14px;line-height:1.55;color:#a9aaa3")}>
+              The curve reached its {T} SOL threshold (illustrative). Meteora DBC revokes the transfer hook in the completing swap and migrates liquidity into a
+              DAMM v2 pool. ACME trades openly from here.
+            </span>
+          </div>
+          <div style={s("display:flex;flex-direction:column")}>
+            {gradSteps.map((g, i) => (
+              <div key={i} style={s("display:grid;grid-template-columns:24px 1fr;gap:12px;padding:10px 0;border-top:1px solid rgba(236,235,230,0.06)")}>
+                <span
+                  style={{
+                    ...s(
+                      "width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:500 10.5px 'Geist Mono',monospace",
+                    ),
+                    background: g.bg,
+                    color: g.fg,
+                    animation: g.anim,
+                  }}
+                >
+                  {g.mark}
+                </span>
+                <span style={s("display:flex;flex-direction:column;gap:2px")}>
+                  <span style={{ ...s("font-size:13.5px"), color: g.color }}>{g.title}</span>
+                  <span style={s("font:400 11px 'Geist Mono',monospace;color:#6f716b")}>{g.detail}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+          <div style={s("display:flex;gap:8px")}>
+            <button
+              onClick={() => setGradModal(false)}
+              disabled={gradBusy}
+              style={{ ...s("flex:1;border:0;cursor:pointer;font-weight:500;font-size:14px;padding:12px;border-radius:10px;background:#ecebe6;color:#0b0c0b"), opacity: gradBusy ? 0.5 : 1 }}
+            >
+              Back to terminal
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -395,7 +476,7 @@ function VerifyPanel({ wallet, onIssued }: { wallet: WalletKey; onIssued: () => 
   const stageNote = hasResult && result ? (result.eligible ? "Credential issued by the issuer bridge" : "Recorded eligible = false. Nothing issued.") : STAGE_NOTES[step + 1] ?? STAGE_NOTES[0];
 
   return (
-    <div style={s("display:flex;flex-direction:column;gap:14px")}>
+    <div style={s("display:flex;flex-direction:column;gap:14px;animation:pyFade .25s")}>
       <div style={s("display:flex;flex-direction:column;gap:6px")}>
         <span style={s("font-weight:500;font-size:16px")}>Prove eligibility privately</span>
         <span style={s("font-size:12.5px;line-height:1.5;color:#8d8f88")}>
@@ -482,7 +563,7 @@ function VerifyPanel({ wallet, onIssued }: { wallet: WalletKey; onIssued: () => 
       {hasResult && result && (
         <div
           style={{
-            ...s("padding:12px 14px;border-radius:10px;border-width:1px;border-style:solid;display:flex;flex-direction:column;gap:4px"),
+            ...s("padding:12px 14px;border-radius:10px;border-width:1px;border-style:solid;display:flex;flex-direction:column;gap:4px;animation:pyIn .35s ease-out"),
             background: result.eligible ? "rgba(212,242,122,0.06)" : "rgba(255,107,91,0.06)",
             borderColor: result.eligible ? "rgba(212,242,122,0.25)" : "rgba(255,107,91,0.25)",
           }}
@@ -549,7 +630,7 @@ function CredentialPanel({
         : "The issuer revoked this credential. Buys fail with CredentialRevoked.";
 
   return (
-    <div style={s("display:flex;flex-direction:column;gap:14px")}>
+    <div style={s("display:flex;flex-direction:column;gap:14px;animation:pyFade .25s")}>
       <div style={{ ...s("border-radius:14px;padding:18px;background:linear-gradient(160deg,#181b15,#111311);border-width:1px;border-style:solid;display:flex;flex-direction:column;gap:16px"), borderColor }}>
         <div style={s("display:flex;justify-content:space-between;align-items:flex-start;gap:10px")}>
           <div style={s("display:flex;flex-direction:column;gap:4px")}>
@@ -620,7 +701,7 @@ function BuyPanel({
   };
 
   return (
-    <div style={s("display:flex;flex-direction:column;gap:12px")}>
+    <div style={s("display:flex;flex-direction:column;gap:12px;animation:pyFade .25s")}>
       <div style={s("padding:14px;border-radius:12px;background:#0b0c0b;border:1px solid rgba(236,235,230,0.1);display:flex;flex-direction:column;gap:6px")}>
         <span style={s("font-size:12px;color:#8d8f88")}>Amount to buy</span>
         <div style={s("display:flex;justify-content:space-between;align-items:center;gap:10px")}>
@@ -653,7 +734,7 @@ function BuyPanel({
       {trade && (
         <div
           style={{
-            ...s("padding:12px 14px;border-radius:10px;border-width:1px;border-style:solid;display:flex;flex-direction:column;gap:4px"),
+            ...s("padding:12px 14px;border-radius:10px;border-width:1px;border-style:solid;display:flex;flex-direction:column;gap:4px;animation:pyIn .35s ease-out"),
             background: trade.ok ? "rgba(212,242,122,0.06)" : "rgba(255,107,91,0.06)",
             borderColor: trade.ok ? "rgba(212,242,122,0.25)" : "rgba(255,107,91,0.25)",
           }}

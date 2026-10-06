@@ -93,6 +93,33 @@ button {
   }
 }
 
+/* Hover micro-interactions -- the original design (a custom sc-*/DCLogic
+   template) expressed these via a style-hover="..." attribute its own
+   runtime applied on mouseenter/mouseleave. Plain React inline styles can't
+   express :hover at all, so these live here as real CSS instead. */
+.py-btn-glow {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.py-btn-glow:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgba(212, 242, 122, 0.25);
+}
+
+.py-card-hover {
+  transition: border-color 0.3s, background 0.3s;
+}
+.py-card-hover:hover {
+  border-color: rgba(212, 242, 122, 0.3);
+  background: #141713;
+}
+
+.py-faq-q {
+  transition: color 0.2s;
+}
+.py-faq-q:hover {
+  color: #d4f27a;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;

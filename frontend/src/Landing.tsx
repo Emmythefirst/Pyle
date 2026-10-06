@@ -128,6 +128,7 @@ export function Landing({
         <div style={s("position:relative;display:flex;flex-wrap:wrap;gap:10px;animation:pyRise .9s .9s both")}>
           <button
             onClick={goTerminal}
+            className="py-btn-glow"
             style={s("border:0;cursor:pointer;font-weight:500;font-size:14px;padding:13px 18px;border-radius:10px;background:#d4f27a;color:#0b0c0b")}
           >
             Open the ACME terminal
@@ -177,6 +178,7 @@ export function Landing({
           {HOW_IT_WORKS.map((h) => (
             <div
               key={h.n}
+              className="py-card-hover"
               style={s(
                 "background:#111311;border:1px solid rgba(236,235,230,0.08);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:14px",
               )}
@@ -198,6 +200,9 @@ export function Landing({
           </h2>
         </div>
         <div style={s("position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0;border:1px solid rgba(236,235,230,0.08);border-radius:14px;overflow:hidden")}>
+          <div style={s("position:absolute;left:0;right:0;top:0;height:1px;overflow:hidden")}>
+            <div style={s("width:40%;height:1px;background:linear-gradient(90deg,transparent,#d4f27a,transparent);animation:pyScan 4s linear infinite")} />
+          </div>
           {LIFECYCLE.map((l) => (
             <div key={l.tag} style={{ ...s("padding:24px;display:flex;flex-direction:column;gap:12px;border-right:1px solid rgba(236,235,230,0.08)"), background: l.bg }}>
               <div style={s("display:flex;align-items:center;gap:10px")}>
@@ -240,6 +245,7 @@ export function Landing({
           </h2>
           <button
             onClick={goTerminal}
+            className="py-btn-glow"
             style={s("border:0;cursor:pointer;font-weight:500;font-size:14px;padding:13px 20px;border-radius:10px;background:#d4f27a;color:#0b0c0b")}
           >
             Open the terminal
@@ -275,6 +281,7 @@ function FaqRow({ q, a }: { q: string; a: string }) {
     <div style={s("border-bottom:1px solid rgba(236,235,230,0.08)")}>
       <button
         onClick={() => setOpen((v) => !v)}
+        className="py-faq-q"
         style={s(
           "width:100%;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:22px 0;border:0;background:transparent;cursor:pointer;color:#ecebe6;text-align:left;font-weight:500;font-size:17px",
         )}
@@ -282,9 +289,11 @@ function FaqRow({ q, a }: { q: string; a: string }) {
         <span>{q}</span>
         <span style={{ ...s("flex:none;font:400 20px 'Geist Mono',monospace;color:#8d8f88;transition:transform .3s"), transform: open ? "rotate(45deg)" : "rotate(0deg)" }}>+</span>
       </button>
-      {open && (
-        <p style={s("margin:0;padding:0 40px 24px 0;max-width:760px;font-size:14.5px;line-height:1.6;color:#a9aaa3")}>{a}</p>
-      )}
+      <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows .4s cubic-bezier(.2,.7,.2,1)" }}>
+        <div style={{ overflow: "hidden" }}>
+          <p style={s("margin:0;padding:0 40px 24px 0;max-width:760px;font-size:14.5px;line-height:1.6;color:#a9aaa3")}>{a}</p>
+        </div>
+      </div>
     </div>
   );
 }
