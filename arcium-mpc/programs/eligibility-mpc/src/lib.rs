@@ -73,7 +73,7 @@ pub mod eligibility_mpc {
             ctx.accounts,
             computation_offset,
             args,
-            vec![CheckEligibilityCallback::callback_ix(
+            vec![CheckEligibilityV2Callback::callback_ix(
                 computation_offset,
                 &ctx.accounts.mxe_account,
                 &[CallbackAccount {
@@ -91,15 +91,15 @@ pub mod eligibility_mpc {
     // ─── Callback: receives the revealed (plaintext) eligibility bit ───────
 
     #[arcium_callback(encrypted_ix = "check_eligibility_v2")]
-    pub fn check_eligibility_callback(
-        ctx: Context<CheckEligibilityCallback>,
-        output: SignedComputationOutputs<CheckEligibilityOutput>,
+    pub fn check_eligibility_v2_callback(
+        ctx: Context<CheckEligibilityV2Callback>,
+        output: SignedComputationOutputs<CheckEligibilityV2Output>,
     ) -> Result<()> {
         let eligible = match output.verify_output(
             &ctx.accounts.cluster_account,
             &ctx.accounts.computation_account,
         ) {
-            Ok(CheckEligibilityOutput { field_0 }) => field_0,
+            Ok(CheckEligibilityV2Output { field_0 }) => field_0,
             // Propagate the real error instead of masking it -- see
             // progress.md §12.10 for why this was worth separating out.
             Err(e) => {
@@ -283,7 +283,7 @@ pub struct CheckEligibility<'info> {
 
 #[callback_accounts("check_eligibility_v2")]
 #[derive(Accounts)]
-pub struct CheckEligibilityCallback<'info> {
+pub struct CheckEligibilityV2Callback<'info> {
     pub arcium_program: Program<'info, Arcium>,
 
     #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_CHECK_ELIGIBILITY))]
