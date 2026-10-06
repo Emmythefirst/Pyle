@@ -180,7 +180,7 @@ export function Landing({
               key={h.n}
               className="py-card-hover"
               style={s(
-                "background:#111311;border:1px solid rgba(236,235,230,0.08);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:14px",
+                "border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:14px",
               )}
             >
               <span style={s("font:500 12px 'Geist Mono',monospace;color:#d4f27a")}>{h.n}</span>
@@ -283,7 +283,7 @@ function FaqRow({ q, a }: { q: string; a: string }) {
         onClick={() => setOpen((v) => !v)}
         className="py-faq-q"
         style={s(
-          "width:100%;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:22px 0;border:0;background:transparent;cursor:pointer;color:#ecebe6;text-align:left;font-weight:500;font-size:17px",
+          "width:100%;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:22px 0;border:0;background:transparent;cursor:pointer;text-align:left;font-weight:500;font-size:17px",
         )}
       >
         <span>{q}</span>

@@ -94,7 +94,11 @@ button {
 }
 
 /* Hover micro-interactions, moved here because plain React inline styles
-   have no way to express a :hover state. */
+   have no way to express a :hover state. The base value of any property
+   that changes on hover has to live here too, not in the inline style prop
+   -- an inline style always wins the cascade over an external stylesheet
+   rule, :hover or not, so a conflicting inline value would make these
+   rules compile but never actually change anything on screen. */
 .py-btn-glow {
   transition: transform 0.2s, box-shadow 0.2s;
 }
@@ -104,6 +108,8 @@ button {
 }
 
 .py-card-hover {
+  background: #111311;
+  border: 1px solid rgba(236, 235, 230, 0.08);
   transition: border-color 0.3s, background 0.3s;
 }
 .py-card-hover:hover {
@@ -112,6 +118,7 @@ button {
 }
 
 .py-faq-q {
+  color: #ecebe6;
   transition: color 0.2s;
 }
 .py-faq-q:hover {
