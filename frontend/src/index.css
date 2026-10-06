@@ -93,10 +93,8 @@ button {
   }
 }
 
-/* Hover micro-interactions -- the original design (a custom sc-*/DCLogic
-   template) expressed these via a style-hover="..." attribute its own
-   runtime applied on mouseenter/mouseleave. Plain React inline styles can't
-   express :hover at all, so these live here as real CSS instead. */
+/* Hover micro-interactions, moved here because plain React inline styles
+   have no way to express a :hover state. */
 .py-btn-glow {
   transition: transform 0.2s, box-shadow 0.2s;
 }
