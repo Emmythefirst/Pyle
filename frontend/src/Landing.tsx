@@ -227,7 +227,7 @@ export function Landing({
             QUESTIONS
           </span>
           <h2 style={s("margin:0;font-weight:500;font-size:clamp(36px,5vw,64px);letter-spacing:-0.045em;line-height:1")}>
-            Good to know<span style={{ color: C.lime }}>.</span>
+            FAQ<span style={{ color: C.lime }}>.</span>
           </h2>
         </div>
         <FaqList />
