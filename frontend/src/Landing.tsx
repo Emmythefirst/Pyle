@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { s, C, tint } from "./style";
 import { short } from "./constants";
+import { Reveal } from "./Reveal";
 import type { CredentialsMap } from "./App";
 import type { PyleState } from "./types";
 
@@ -155,7 +156,7 @@ export function Landing({
       </section>
 
       <section style={s("max-width:1180px;width:100%;box-sizing:border-box;margin:0 auto;padding:0 24px 72px")}>
-        <div
+        <Reveal
           style={s(
             "display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:rgba(236,235,230,0.08);border:1px solid rgba(236,235,230,0.08);border-radius:14px;overflow:hidden",
           )}
@@ -166,18 +167,19 @@ export function Landing({
               <span style={{ ...s("font:500 26px 'Geist Mono',monospace;letter-spacing:-0.02em"), color: st.color }}>{st.value}</span>
             </div>
           ))}
-        </div>
+        </Reveal>
       </section>
 
       <section style={s("max-width:1180px;width:100%;box-sizing:border-box;margin:0 auto;padding:0 24px 88px;display:flex;flex-direction:column;gap:28px")}>
-        <div style={s("display:flex;flex-direction:column;gap:8px")}>
+        <Reveal style={s("display:flex;flex-direction:column;gap:8px")}>
           <span style={s("font:500 12px 'Geist Mono',monospace;color:#8d8f88")}>How it works</span>
           <h2 style={s("margin:0;font-weight:500;font-size:clamp(26px,3vw,38px);letter-spacing:-0.03em")}>Three pieces, all on-chain</h2>
-        </div>
+        </Reveal>
         <div style={s("display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px")}>
-          {HOW_IT_WORKS.map((h) => (
-            <div
+          {HOW_IT_WORKS.map((h, i) => (
+            <Reveal
               key={h.n}
+              delay={i * 120}
               className="py-card-hover"
               style={s(
                 "border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:14px",
@@ -187,19 +189,19 @@ export function Landing({
               <span style={s("font-weight:500;font-size:18px;letter-spacing:-0.01em")}>{h.title}</span>
               <span style={s("font-size:14px;line-height:1.55;color:#a9aaa3")}>{h.body}</span>
               <span style={s("font:400 11.5px 'Geist Mono',monospace;color:#6f716b;padding-top:10px;border-top:1px solid rgba(236,235,230,0.06)")}>{h.tech}</span>
-            </div>
+            </Reveal>
           ))}
         </div>
       </section>
 
       <section style={s("max-width:1180px;width:100%;box-sizing:border-box;margin:0 auto;padding:0 24px 96px;display:flex;flex-direction:column;gap:28px")}>
-        <div style={s("display:flex;flex-direction:column;gap:8px")}>
+        <Reveal style={s("display:flex;flex-direction:column;gap:8px")}>
           <span style={s("font:500 12px 'Geist Mono',monospace;color:#8d8f88")}>Lifecycle</span>
           <h2 style={s("margin:0;font-weight:500;font-size:clamp(26px,3vw,38px);letter-spacing:-0.03em;max-width:760px")}>
             Restricted at issuance, freely tradable after graduation
           </h2>
-        </div>
-        <div style={s("position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0;border:1px solid rgba(236,235,230,0.08);border-radius:14px;overflow:hidden")}>
+        </Reveal>
+        <Reveal style={s("position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0;border:1px solid rgba(236,235,230,0.08);border-radius:14px;overflow:hidden")}>
           <div style={s("position:absolute;left:0;right:0;top:0;height:1px;overflow:hidden")}>
             <div style={s("width:40%;height:1px;background:linear-gradient(90deg,transparent,#d4f27a,transparent);animation:pyScan 4s linear infinite")} />
           </div>
@@ -213,7 +215,7 @@ export function Landing({
               <span style={s("font-size:13.5px;line-height:1.55;color:#a9aaa3")}>{l.body}</span>
             </div>
           ))}
-        </div>
+        </Reveal>
         <p style={s("margin:0;max-width:760px;font-size:13px;line-height:1.6;color:#8d8f88")}>
           Meteora DBC revokes the transfer hook in the swap that completes the curve, so the pool can migrate into permissionless DAMM v2 liquidity.
           Eligibility is enforced through the DBC phase; once graduated, the asset trades openly.
@@ -221,7 +223,7 @@ export function Landing({
       </section>
 
       <section style={s("max-width:1180px;width:100%;box-sizing:border-box;margin:0 auto;padding:24px 24px 120px;display:flex;flex-direction:column;gap:40px")}>
-        <div style={s("display:flex;flex-direction:column;gap:14px")}>
+        <Reveal style={s("display:flex;flex-direction:column;gap:14px")}>
           <span style={s("display:flex;align-items:center;gap:8px;font:500 12px 'Geist Mono',monospace;color:#8d8f88")}>
             <span style={s("width:6px;height:6px;border-radius:50%;background:#d4f27a")} />
             QUESTIONS
@@ -229,8 +231,10 @@ export function Landing({
           <h2 style={s("margin:0;font-weight:500;font-size:clamp(36px,5vw,64px);letter-spacing:-0.045em;line-height:1")}>
             FAQ<span style={{ color: C.lime }}>.</span>
           </h2>
-        </div>
-        <FaqList />
+        </Reveal>
+        <Reveal>
+          <FaqList />
+        </Reveal>
       </section>
 
       <section style={s("border-top:1px solid rgba(236,235,230,0.08);position:relative;overflow:hidden")}>
@@ -239,7 +243,7 @@ export function Landing({
             "position:absolute;left:50%;top:50%;width:700px;height:400px;transform:translate(-50%,-50%);background:radial-gradient(closest-side,rgba(212,242,122,0.08),transparent);pointer-events:none;animation:pyGlow 5s ease-in-out infinite",
           )}
         />
-        <div style={s("position:relative;max-width:1180px;margin:0 auto;padding:140px 24px;display:flex;flex-direction:column;align-items:center;gap:32px;text-align:center")}>
+        <Reveal style={s("position:relative;max-width:1180px;margin:0 auto;padding:140px 24px;display:flex;flex-direction:column;align-items:center;gap:32px;text-align:center")}>
           <h2 style={s("margin:0;font-weight:500;font-size:clamp(40px,6vw,80px);letter-spacing:-0.045em;line-height:1;max-width:900px")}>
             Compliance that travels with the token<span style={{ color: C.lime }}>.</span>
           </h2>
@@ -250,7 +254,7 @@ export function Landing({
           >
             Open the terminal
           </button>
-        </div>
+        </Reveal>
       </section>
 
       <footer

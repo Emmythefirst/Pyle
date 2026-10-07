@@ -121,6 +121,15 @@ cd frontend && npm install && npm run dev  # :5173
 
 The backend defaults to the pool `setup-demo-dbc-pool.ts` creates (via `demo-dbc-pool.json`) and devnet's public RPC; see `backend/.env.example` for overrides.
 
+## Testing
+
+Every test runs against live devnet — the same real programs, the same real Arcium cluster the demo uses — using a throwaway wallet generated per run, never the demo's own wallet A/B/C or DBC pool, so running the suite never disturbs the demo state.
+
+```bash
+npm test                                     # credential issuance/revocation + hook enforcement
+cd arcium-mpc && npm test                    # real MPC round trip (two cases, ~30-90s)
+```
+
 ## Deployed programs (devnet)
 
 | Program | Address |
@@ -134,4 +143,3 @@ The backend defaults to the pool `setup-demo-dbc-pool.ts` creates (via `demo-dbc
 - **Eligibility enforcement is DBC-phase-only, by Meteora's own design.** Confirmed directly with the Meteora team: DBC revokes the transfer hook's authority and program ID in the very swap that completes the curve, before migration is even called, so a DAMM v2 pool never has a hook to invoke — "there is no action needed from our end and you cant extend the transfer hook into DAMM v2 pool." This isn't a bug in Pyle; it's the same posture as a real security restricted at issuance and freely tradable afterward, and the dashboard narrates it honestly rather than claiming otherwise.
 - Verification inputs (income/net worth) are simulated test data entered directly in the UI. In production these would come from a real provider (e.g. Civic); Pyle never receives the underlying figures either way — only the MPC-revealed boolean.
 - Demo wallets A/B/C are prepared backend-held keypairs rather than a connected browser wallet, so the credential story is visible without requiring a wallet extension during judging.
-- No automated test suite beyond integration scripts (`scripts/eligibility-test`, `scripts/graduation-test`) that exercise the real on-chain flows directly against devnet.

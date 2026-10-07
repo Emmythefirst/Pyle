@@ -3,7 +3,8 @@
   "private": true,
   "license": "ISC",
   "scripts": {
-    "run": "tsx client/run-check-eligibility.ts"
+    "run": "tsx client/run-check-eligibility.ts",
+    "test": "tsx tests/check-eligibility.test.ts"
   },
   "dependencies": {
     "@arcium-hq/client": "0.15.0",
