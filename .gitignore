@@ -16,6 +16,12 @@ build
 # local-only project notes, never pushed
 progress.md
 
+# backup of program deploy keypairs (upgrade authority for
+# eligibility-credential + transfer-hook) -- target/deploy/ is gitignored
+# above and would be unrecoverable if wiped; this is a local-only safety
+# copy, never pushed, same handling as progress.md
+.local-keys/
+
 # arcium-mpc/build holds the compiled circuit (.arcis) the MPC cluster
 # fetches via the comp-def's OffChain source URL -- a required deployment
 # artifact, not transient JS build output, so it's exempted from the
