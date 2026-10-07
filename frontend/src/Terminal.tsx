@@ -4,11 +4,10 @@ import { WALLETS, short, fmtT } from "./constants";
 import type { WalletKey } from "./constants";
 import { api } from "./api";
 import type { CredentialsMap } from "./App";
-import type { PyleState, VerifyResult } from "./types";
+import type { GraduationResult, PyleState, VerifyResult } from "./types";
 
-const T = 85;
-const START = 51.3;
-
+// Purely a chart-shape helper now -- pct comes from the real DBC pool's
+// quoteReserve/migrationQuoteThreshold (poolWatcher.ts), not a local value.
 function curve(pct: number) {
   const pts: [number, number][] = [];
   for (let i = 0; i <= 40; i++) {
@@ -19,11 +18,6 @@ function curve(pct: number) {
   const done = pts.slice(0, Math.round(pct * 40) + 1);
   const last = done[done.length - 1];
   return { line: P(pts), done: P(done), fill: P(done) + ` L${last[0].toFixed(1)} 104 L0 104 Z` };
-}
-
-function price(quote: number): number {
-  const x = quote / T;
-  return 0.0000182 * (1 + 3.4 * x * x);
 }
 
 const STAGE_NOTES = [
@@ -51,78 +45,73 @@ export function Terminal({
   const [tab, setTab] = useState<"verify" | "cred" | "buy">("buy");
   const [filter, setFilter] = useState<"all" | "block" | "pass">("all");
 
-  // Illustrative only (see progress.md's frontend-build scope decision): no
-  // persistent DBC pool exists, so this bonding-curve chart is a local,
-  // cosmetic stand-in nudged by real buy activity -- not a real pool read.
-  const [quote, setQuote] = useState(START);
-  const [phase, setPhase] = useState<"curve" | "complete" | "open">("curve");
   const [grading, setGrading] = useState(false);
   const [gradModal, setGradModal] = useState(false);
-  const [gradStep, setGradStep] = useState(0);
-  const lastBuyCount = useRef(state.successfulBuys.length);
+  const [gradResult, setGradResult] = useState<GraduationResult | null>(null);
+  const [gradError, setGradError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (state.successfulBuys.length > lastBuyCount.current && phase === "curve") {
-      setQuote((q) => Math.min(q + 0.6, T * 0.97));
-    }
-    lastBuyCount.current = state.successfulBuys.length;
-  }, [state.successfulBuys.length, phase]);
-
-  const graduate = () => {
-    if (phase !== "curve" || grading) return;
+  const graduate = async () => {
+    if (grading) return;
     setGrading(true);
-    const iv = setInterval(() => {
-      setQuote((q) => {
-        const next = Math.min(T, q + 2.4);
-        if (next >= T) {
-          clearInterval(iv);
-          setPhase("complete");
-          setGrading(false);
-          setGradModal(true);
-          setGradStep(1);
-          setTimeout(() => setGradStep(2), 1400);
-          setTimeout(() => {
-            setPhase("open");
-            setGradStep(3);
-          }, 4400);
-        }
-        return next;
-      });
-    }, 220);
+    setGradError(null);
+    try {
+      const result = await api.graduate();
+      setGradResult(result);
+      setGradModal(true);
+    } catch (err) {
+      setGradError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setGrading(false);
+    }
   };
-  const reset = () => {
-    setQuote(START);
-    setPhase("curve");
-    setGrading(false);
-    setGradModal(false);
-    setGradStep(0);
-  };
+
+  // Real pool state from poolWatcher.ts -- quoteReserve/threshold are
+  // lamports-as-strings (can exceed JS safe-int range), percentComplete and
+  // migrated are already computed server-side against the live DBC pool.
+  const pool = state.poolState;
+  const quoteReserveSol = pool.quoteReserve ? Number(pool.quoteReserve) / 1e9 : 0;
+  const thresholdSol = pool.migrationQuoteThreshold ? Number(pool.migrationQuoteThreshold) / 1e9 : 0;
+  const pct = pool.percentComplete != null ? Math.min(1, pool.percentComplete / 100) : 0;
+  const cv = curve(pct);
+
+  // "complete" is the real, brief in-between state where the curve has hit
+  // its threshold (the hook is already revoked, atomically, in that same
+  // completing buy -- progress.md §10) but migrateToDammV2 hasn't landed
+  // yet. gated only cares whether the hook is still enforced, i.e. whether
+  // the curve is still short of threshold.
+  const gated = pool.configured && !pool.migrated && pct < 1;
+  const phase: "curve" | "complete" | "open" = !pool.configured || pct < 1 ? "curve" : pool.migrated ? "open" : "complete";
+  const stage = gated ? 0 : phase === "complete" ? 1 : 2;
+  const phaseLabel = !pool.configured ? "pool not configured" : gated ? "gate active" : phase === "complete" ? "curve complete" : "graduated · DAMM v2";
+  const phaseColor = gated ? C.lime : phase === "complete" ? C.amber : C.blue;
 
   const gradSteps = [
-    { title: "Curve complete", detail: `quoteReserve reached ${T} SOL` },
-    { title: "Transfer hook revoked", detail: "DBC: TransferHook Update + SetAuthority" },
-    { title: "Migrated to DAMM v2", detail: "migrateToDammV2 · pool open (illustrative)" },
-  ].map((step, i) => {
-    const done = gradStep > i + 1 || gradStep === 3;
-    const active = gradStep === i + 1 && gradStep < 3;
-    return {
-      ...step,
-      mark: done ? "✓" : String(i + 1),
-      bg: done ? tint.lime : active ? "#ecebe6" : "rgba(236,235,230,0.06)",
-      fg: done ? C.lime : active ? "#0b0c0b" : C.dim,
-      color: done || active ? C.ink : C.dim,
-      anim: active ? "pyPulse 1s infinite" : "none",
-    };
-  });
-  const gradBusy = gradStep < 3;
+    {
+      title: "Curve complete · hook revoked",
+      detail: gradResult?.alreadyGraduated
+        ? "already past threshold"
+        : gradResult?.completeSignature
+          ? `real tx · ${short(gradResult.completeSignature)}`
+          : "DBC revokes the hook atomically in the completing buy",
+    },
+    {
+      title: "Migrated to DAMM v2",
+      detail: gradResult?.migrateSignature
+        ? `real tx · ${short(gradResult.migrateSignature)}`
+        : gradResult?.dammV2Pool
+          ? `pool ${short(gradResult.dammV2Pool)}`
+          : "migrateToDammV2",
+    },
+  ].map((step) => ({
+    ...step,
+    done: !!gradResult,
+    mark: gradResult ? "✓" : "·",
+    bg: gradResult ? tint.lime : "rgba(236,235,230,0.06)",
+    fg: gradResult ? C.lime : C.dim,
+    color: gradResult ? C.ink : C.dim,
+  }));
 
   const cred = credentials[activeWallet];
-  const gated = phase === "curve";
-  const pct = Math.min(1, quote / T);
-  const cv = curve(pct);
-  const stage = gated ? 0 : phase === "complete" ? 1 : 2;
-  const phaseLabel = gated ? "gate active" : phase === "complete" ? "curve complete" : "graduated · DAMM v2";
-  const phaseColor = gated ? C.lime : phase === "complete" ? C.amber : C.blue;
 
   const feedRows = [...state.blockedTransfers.map((e) => ({ ...e, kind: "block" as const })), ...state.successfulBuys.map((e) => ({ ...e, kind: "pass" as const }))]
     .sort((a, b) => b.timestamp - a.timestamp)
@@ -148,8 +137,8 @@ export function Terminal({
             </div>
           </div>
           <div style={s("text-align:right")}>
-            <div style={s("font:500 28px 'Geist Mono',monospace;letter-spacing:-0.03em")}>{price(quote).toFixed(7)}</div>
-            <div style={s("font:400 12px 'Geist Mono',monospace;color:#8d8f88")}>SOL per ACME (illustrative)</div>
+            <div style={s("font:500 28px 'Geist Mono',monospace;letter-spacing:-0.03em")}>{quoteReserveSol.toFixed(3)}</div>
+            <div style={s("font:400 12px 'Geist Mono',monospace;color:#8d8f88")}>SOL raised</div>
           </div>
         </div>
 
@@ -171,9 +160,9 @@ export function Terminal({
         <div style={s("background:#111311;border:1px solid rgba(236,235,230,0.08);border-radius:12px;padding:16px 18px;display:flex;flex-wrap:wrap;gap:18px;align-items:center")}>
           <div style={s("flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:10px")}>
             <div style={s("display:flex;justify-content:space-between;gap:12px;font:400 12px 'Geist Mono',monospace;color:#8d8f88")}>
-              <span>Curve to graduation (illustrative)</span>
+              <span>Curve to graduation</span>
               <span>
-                <span style={{ color: C.lime }}>{(pct * 100).toFixed(1)}%</span> · {quote.toFixed(1)} / {T} SOL
+                <span style={{ color: C.lime }}>{(pct * 100).toFixed(1)}%</span> · {quoteReserveSol.toFixed(2)} / {thresholdSol.toFixed(2)} SOL
               </span>
             </div>
             <svg viewBox="0 0 400 110" preserveAspectRatio="none" style={s("width:100%;height:96px;display:block")}>
@@ -201,16 +190,17 @@ export function Terminal({
             })}
             <div style={s("display:flex;gap:6px;padding-top:6px")}>
               <button
-                onClick={graduate}
-                disabled={!gated || grading}
-                style={{ ...s("flex:1;border:0;cursor:pointer;font-weight:500;font-size:12.5px;padding:9px 10px;border-radius:8px;background:#d4f27a;color:#0b0c0b"), opacity: !gated || grading ? 0.45 : 1 }}
+                onClick={() => void graduate()}
+                disabled={!pool.configured || pool.migrated || grading}
+                style={{
+                  ...s("flex:1;border:0;cursor:pointer;font-weight:500;font-size:12.5px;padding:9px 10px;border-radius:8px;background:#d4f27a;color:#0b0c0b"),
+                  opacity: !pool.configured || pool.migrated || grading ? 0.45 : 1,
+                }}
               >
-                {grading ? "Graduating…" : gated ? "Run graduation" : "Graduated"}
-              </button>
-              <button onClick={reset} style={s("border:1px solid rgba(236,235,230,0.14);cursor:pointer;font-size:12.5px;padding:9px 10px;border-radius:8px;background:transparent;color:#ecebe6")}>
-                Reset
+                {grading ? "Graduating… (real buys + migration)" : pool.migrated ? "Graduated" : "Run graduation"}
               </button>
             </div>
+            {gradError && <span style={s("font-size:11px;color:#ff6b5b")}>{gradError}</span>}
           </div>
         </div>
 
@@ -353,15 +343,15 @@ export function Terminal({
       <div style={s("position:fixed;inset:0;z-index:20;background:rgba(6,7,6,0.78);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:24px;animation:pyFade .3s")}>
         <div style={s("width:100%;max-width:560px;background:#111311;border:1px solid rgba(236,235,230,0.12);border-radius:18px;padding:30px;display:flex;flex-direction:column;gap:22px;box-shadow:0 30px 80px rgba(0,0,0,0.5)")}>
           <div style={s("display:flex;flex-direction:column;gap:10px")}>
-            <span style={{ ...s("font:500 12px 'Geist Mono',monospace"), color: gradStep < 3 ? C.amber : C.blue }}>
-              {gradStep < 3 ? "GRADUATING…" : "GRADUATED · DAMM V2"}
-            </span>
+            <span style={{ ...s("font:500 12px 'Geist Mono',monospace"), color: C.blue }}>GRADUATED · DAMM V2</span>
             <span style={s("font-weight:500;font-size:30px;letter-spacing:-0.03em;line-height:1.1")}>
               ACME has <span style={s("font-family:'Instrument Serif',serif;font-style:italic;font-weight:400")}>graduated</span>
             </span>
             <span style={s("font-size:14px;line-height:1.55;color:#a9aaa3")}>
-              The curve reached its {T} SOL threshold (illustrative). Meteora DBC revokes the transfer hook in the completing swap and migrates liquidity into a
-              DAMM v2 pool. ACME trades openly from here.
+              {gradResult?.alreadyGraduated
+                ? "The curve had already reached its threshold. Meteora DBC revoked the transfer hook in the completing swap and liquidity is migrated into DAMM v2."
+                : `The curve reached its ${thresholdSol.toFixed(2)} SOL threshold via ${gradResult?.buySignatures.length ?? 0} real buy(s). Meteora DBC revoked the transfer hook in the completing swap and migrated liquidity into a DAMM v2 pool.`}{" "}
+              ACME trades openly from here.
             </span>
           </div>
           <div style={s("display:flex;flex-direction:column")}>
@@ -374,7 +364,6 @@ export function Terminal({
                     ),
                     background: g.bg,
                     color: g.fg,
-                    animation: g.anim,
                   }}
                 >
                   {g.mark}
@@ -386,11 +375,20 @@ export function Terminal({
               </div>
             ))}
           </div>
+          {gradResult?.dammV2Pool && (
+            <a
+              href={`https://explorer.solana.com/address/${gradResult.dammV2Pool}?cluster=devnet`}
+              target="_blank"
+              rel="noreferrer"
+              style={s("font:400 11px 'Geist Mono',monospace;color:#8d8f88")}
+            >
+              DAMM v2 pool: {gradResult.dammV2Pool}
+            </a>
+          )}
           <div style={s("display:flex;gap:8px")}>
             <button
               onClick={() => setGradModal(false)}
-              disabled={gradBusy}
-              style={{ ...s("flex:1;border:0;cursor:pointer;font-weight:500;font-size:14px;padding:12px;border-radius:10px;background:#ecebe6;color:#0b0c0b"), opacity: gradBusy ? 0.5 : 1 }}
+              style={s("flex:1;border:0;cursor:pointer;font-weight:500;font-size:14px;padding:12px;border-radius:10px;background:#ecebe6;color:#0b0c0b")}
             >
               Back to terminal
             </button>
@@ -672,7 +670,7 @@ function BuyPanel({
   onBought: () => void;
   goVerify: () => void;
 }) {
-  const [amount, setAmount] = useState("10");
+  const [amount, setAmount] = useState("0.05");
   const [busy, setBusy] = useState(false);
   const [trade, setTrade] = useState<{ ok: boolean; title: string; detail: string; sig?: string } | null>(null);
 
@@ -690,7 +688,7 @@ function BuyPanel({
       const amt = Math.max(0, Number(amount) || 0);
       const res = await api.buy(wallet, amt);
       if (res.ok) {
-        setTrade({ ok: true, title: "Buy confirmed", detail: `${amt} ACME transferred from the treasury. The transfer hook found a valid credential.`, sig: res.signature });
+        setTrade({ ok: true, title: "Buy confirmed", detail: `${amt} SOL swapped into ACME on the DBC curve. The transfer hook found a valid credential.`, sig: res.signature });
         onBought();
       } else {
         setTrade({ ok: false, title: "Transaction reverted", detail: "The hook rejected this transfer. See the gate feed for the exact reason.", sig: res.signature });
@@ -711,7 +709,7 @@ function BuyPanel({
             inputMode="decimal"
             style={s("flex:1;min-width:0;border:0;background:transparent;color:#ecebe6;font:500 26px 'Geist Mono',monospace")}
           />
-          <span style={s("font-size:13px;padding:4px 10px;border-radius:999px;background:rgba(236,235,230,0.07)")}>ACME</span>
+          <span style={s("font-size:13px;padding:4px 10px;border-radius:999px;background:rgba(236,235,230,0.07)")}>SOL</span>
         </div>
       </div>
       <div style={s("display:flex;flex-direction:column;gap:6px;padding:4px 2px")}>
@@ -726,10 +724,10 @@ function BuyPanel({
       </div>
       <button
         onClick={buy}
-        disabled={busy}
-        style={{ ...s("border:0;cursor:pointer;font-weight:500;font-size:14px;padding:13px;border-radius:10px;background:#d4f27a;color:#0b0c0b"), opacity: busy ? 0.6 : 1 }}
+        disabled={busy || !gated}
+        style={{ ...s("border:0;cursor:pointer;font-weight:500;font-size:14px;padding:13px;border-radius:10px;background:#d4f27a;color:#0b0c0b"), opacity: busy || !gated ? 0.6 : 1 }}
       >
-        {busy ? "Submitting…" : `Buy ACME as ${WALLETS[wallet].name}`}
+        {busy ? "Submitting…" : !gated ? "Graduated — trades on DAMM v2 now" : `Buy ACME as ${WALLETS[wallet].name}`}
       </button>
       {trade && (
         <div

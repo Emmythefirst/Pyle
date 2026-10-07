@@ -33,6 +33,8 @@ export const state: PyleState = {
     quoteReserve: null,
     migrationQuoteThreshold: null,
     percentComplete: null,
+    migrated: false,
+    dammV2Pool: null,
   },
   credentialedWalletCount: 0,
   mpcAttestations: [],

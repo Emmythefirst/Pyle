@@ -1,5 +1,5 @@
 import { BACKEND_HTTP } from "./constants";
-import type { BuyResult, CredentialView, PyleState, VerifyResult } from "./types";
+import type { BuyResult, CredentialView, GraduationResult, PyleState, VerifyResult } from "./types";
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${BACKEND_HTTP}${path}`);
@@ -20,8 +20,9 @@ export const api = {
   getState: () => getJson<PyleState>("/state"),
   getCredential: (wallet: string) => getJson<CredentialView>(`/credential/${wallet}`),
   getCredentials: () => getJson<CredentialView[]>("/credentials"),
-  buy: (wallet: string, amount: number) => postJson<BuyResult>("/buy", { wallet, amount }),
+  buy: (wallet: string, amountSol: number) => postJson<BuyResult>("/buy", { wallet, amountSol }),
   verify: (wallet: string, income: number, netWorth: number) =>
     postJson<VerifyResult>("/verify", { wallet, income, netWorth }),
   revoke: (wallet: string) => postJson<{ ok: boolean; signature?: string; error?: string }>("/revoke", { wallet }),
+  graduate: () => postJson<GraduationResult>("/graduate", {}),
 };

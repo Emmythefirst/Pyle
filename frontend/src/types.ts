@@ -32,6 +32,8 @@ export interface PoolStateEvent {
   quoteReserve: string | null;
   migrationQuoteThreshold: string | null;
   percentComplete: number | null;
+  migrated: boolean;
+  dammV2Pool: string | null;
 }
 
 export interface CredentialedWalletCountEvent {
@@ -85,4 +87,12 @@ export interface VerifyResult {
   finalizeSig: string;
   credentialIssued: boolean;
   credentialSig: string | null;
+}
+
+export interface GraduationResult {
+  alreadyGraduated: boolean;
+  buySignatures: string[];
+  completeSignature: string | null;
+  migrateSignature: string | null;
+  dammV2Pool: string;
 }

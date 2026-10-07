@@ -1,5 +1,6 @@
 import { Connection } from "@solana/web3.js";
-import { DynamicBondingCurveClient } from "@meteora-ag/dynamic-bonding-curve-sdk";
+import { NATIVE_MINT } from "@solana/spl-token";
+import { DAMM_V2_MIGRATION_FEE_ADDRESS, DynamicBondingCurveClient, deriveDammV2PoolAddress } from "@meteora-ag/dynamic-bonding-curve-sdk";
 import { DBC_POOL_ADDRESS, POOL_POLL_INTERVAL_MS } from "../config.js";
 import { updatePoolState } from "../state.js";
 
@@ -35,6 +36,16 @@ export function startPoolPolling(connection: Connection): void {
       const quoteReserve = pool.poolState.quoteReserve;
       const threshold = poolConfig.migrationQuoteThreshold;
 
+      // The DBC pool account itself stays queryable after migration (just
+      // "complete"), so quoteReserve/threshold alone can't tell the
+      // dashboard whether the real migrateToDammV2 call has actually
+      // happened yet -- check the derived DAMM v2 pool's existence
+      // directly, the same way dbcGraduate.ts decides whether to skip
+      // re-migrating.
+      const dammConfig = DAMM_V2_MIGRATION_FEE_ADDRESS[poolConfig.migrationFeeOption];
+      const dammV2PoolAddress = deriveDammV2PoolAddress(dammConfig, pool.poolState.baseMint, NATIVE_MINT);
+      const dammV2PoolInfo = await connection.getAccountInfo(dammV2PoolAddress);
+
       updatePoolState({
         type: "pool_state",
         configured: true,
@@ -43,6 +54,8 @@ export function startPoolPolling(connection: Connection): void {
         percentComplete: threshold.isZero()
           ? null
           : Math.min(100, quoteReserve.muln(100).div(threshold).toNumber()),
+        migrated: !!dammV2PoolInfo,
+        dammV2Pool: dammV2PoolInfo ? dammV2PoolAddress.toBase58() : null,
       });
     } catch (err) {
       console.error("Failed to poll DBC pool state:", err);

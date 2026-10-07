@@ -3,10 +3,12 @@ import { Connection } from "@solana/web3.js";
 import { WebSocketServer } from "ws";
 import { onEvent, state } from "./state.js";
 import { WS_PORT } from "./config.js";
-import { buyAsWallet } from "./buy.js";
+import { buyOnDbc } from "./dbcBuy.js";
+import { runGraduation } from "./dbcGraduate.js";
 import { getCredential, listCredentials, revokeCredential } from "./credentialApi.js";
 import { runEligibilityCheck } from "./mpcApi.js";
 import { resolveWalletKey } from "./demoWallets.js";
+import { errorMessage } from "./errorMessage.js";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -90,8 +92,13 @@ async function handleRequest(
       const body = await readJsonBody(req);
       const walletKey = resolveWalletKey(String(body.wallet ?? ""));
       if (!walletKey) return sendJson(res, 400, { error: "wallet must be A, B, or C" });
-      const amount = Number(body.amount ?? 0);
-      sendJson(res, 200, await buyAsWallet(connection, walletKey, amount));
+      const amountSol = Number(body.amountSol ?? 0);
+      sendJson(res, 200, await buyOnDbc(connection, walletKey, amountSol));
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/graduate") {
+      sendJson(res, 200, await runGraduation(connection));
       return;
     }
 
@@ -117,6 +124,6 @@ async function handleRequest(
     res.end();
   } catch (err) {
     console.error(`Request failed: ${req.method} ${url.pathname}`, err);
-    sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+    sendJson(res, 500, { error: errorMessage(err) });
   }
 }

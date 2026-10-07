@@ -1,4 +1,5 @@
 import { PublicKey } from "@solana/web3.js";
+import { DBC_POOL } from "./dbcPool.js";
 
 export const RPC_URL = process.env.RPC_URL ?? "https://api.devnet.solana.com";
 export const WS_PORT = Number(process.env.WS_PORT ?? 8787);
@@ -10,13 +11,12 @@ export const ELIGIBILITY_CREDENTIAL_PROGRAM_ID = new PublicKey(
   process.env.ELIGIBILITY_CREDENTIAL_PROGRAM_ID ?? "HeopPJru1XZ7AHXDack1mtLSLKFejvRyLsrJZtJoz1bq",
 );
 
-// Set once a pool exists to demo against (created fresh per demo run --
-// see progress.md §9-§11 on why there's no single persistent pool). The
-// pool watcher simply stays idle and reports no curve data if this is unset,
-// rather than fabricating a fake one.
+// Defaults to the persistent pool scripts/eligibility-test/setup-demo-dbc-pool.ts
+// created (see dbcPool.ts) -- overridable via env for pointing at a
+// different pool without a code change.
 export const DBC_POOL_ADDRESS = process.env.DBC_POOL_ADDRESS
   ? new PublicKey(process.env.DBC_POOL_ADDRESS)
-  : null;
+  : DBC_POOL;
 
 // Must byte-for-byte match eligibility-credential's POLICY_US_ACCREDITED.
 export const POLICY_US_ACCREDITED = Buffer.concat([

@@ -7,6 +7,7 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 import { ELIGIBILITY_CREDENTIAL_PROGRAM_ID, POLICY_US_ACCREDITED } from "./config.js";
 import { DEMO_WALLETS, TREASURY_KEYPAIR, WalletKey, resolveWalletKey } from "./demoWallets.js";
+import { errorMessage } from "./errorMessage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -120,7 +121,7 @@ export async function revokeCredential(
       .rpc();
     return { ok: true, signature };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return { ok: false, error: errorMessage(err) };
   }
 }
 
@@ -156,6 +157,6 @@ export async function issueCredential(
       .rpc();
     return { ok: true, signature };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return { ok: false, error: errorMessage(err) };
   }
 }

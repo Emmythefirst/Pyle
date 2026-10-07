@@ -33,6 +33,8 @@ export interface PoolStateEvent {
   quoteReserve: string | null;
   migrationQuoteThreshold: string | null;
   percentComplete: number | null;
+  migrated: boolean;
+  dammV2Pool: string | null;
 }
 
 export interface CredentialedWalletCountEvent {

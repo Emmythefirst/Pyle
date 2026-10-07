@@ -6,7 +6,7 @@ const EMPTY_STATE: PyleState = {
   blockedTransfers: [],
   successfulBuys: [],
   credentialActivity: [],
-  poolState: { type: "pool_state", configured: false, quoteReserve: null, migrationQuoteThreshold: null, percentComplete: null },
+  poolState: { type: "pool_state", configured: false, quoteReserve: null, migrationQuoteThreshold: null, percentComplete: null, migrated: false, dammV2Pool: null },
   credentialedWalletCount: 0,
   mpcAttestations: [],
 };
