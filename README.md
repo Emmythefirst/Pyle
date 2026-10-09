@@ -6,6 +6,8 @@ Built for Meteora's Dynamic Bonding Curve (DBC) track at Colosseum's Stocklana h
 
 πύλη (Pyle) — Greek for "gate": the transfer hook is the gate that checks eligibility before letting a trade through.
 
+**Live demo:** [frontend-indol-rho-65.vercel.app](https://frontend-indol-rho-65.vercel.app) — real devnet backend at [pyle-backend-production.up.railway.app](https://pyle-backend-production.up.railway.app).
+
 ## The problem
 
 Tokenized-stock launches on Meteora DBC legally need to restrict buyers to eligible (accredited) investors. The standard fix is a centralized KYC database — a privacy risk and a single point of failure. Pyle enforces eligibility on the asset itself, automatically, without exposing who anyone is or what their income/net worth actually are.
