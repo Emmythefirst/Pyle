@@ -1,10 +1,24 @@
 .anchor
 .DS_Store
-target
 **/*.rs.bk
 node_modules
 test-ledger
 .yarn
+
+# Anchor build output -- everything except the two IDL directories below,
+# which backend/frontend need at runtime to build Program clients and which
+# a hosted backend (no local Anchor toolchain) has no other way to get. A
+# bare "target" previously caught every target/ dir recursively (including
+# a stray programs/transfer-hook/target/deploy/*-keypair.json); **/target/*
+# preserves that reach so a keypair left in some other nested target/ stays
+# covered too, and the .so binaries + Rust build cache stay ignored (large).
+**/target/*
+!/target/idl
+!/arcium-mpc/target/idl
+/target/idl/*
+!/target/idl/*.json
+/arcium-mpc/target/idl/*
+!/arcium-mpc/target/idl/*.json
 
 # frontend / backend
 dist

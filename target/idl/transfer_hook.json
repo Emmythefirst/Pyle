@@ -1,0 +1,329 @@
+{
+  "address": "F9p71yDgPkb3u6FM8jVaGWqQgDY2z6hGmHLof8FANr4z",
+  "metadata": {
+    "name": "transfer_hook",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Pyle Token-2022 transfer-hook program — gates transfers on a per-recipient eligibility PDA"
+  },
+  "instructions": [
+    {
+      "name": "initialize_extra_account_metas_list",
+      "discriminator": [
+        43,
+        34,
+        13,
+        49,
+        167,
+        88,
+        235,
+        235
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_mint"
+        },
+        {
+          "name": "extra_account_metas_list",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  120,
+                  116,
+                  114,
+                  97,
+                  45,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "transfer_hook",
+      "discriminator": [
+        105,
+        37,
+        101,
+        197,
+        75,
+        251,
+        102,
+        26
+      ],
+      "accounts": [
+        {
+          "name": "source_token_account",
+          "docs": [
+            "TransferHookAccount extension state below"
+          ]
+        },
+        {
+          "name": "token_mint"
+        },
+        {
+          "name": "destination_token_account",
+          "docs": [
+            "Typed so we can read `.owner` (the recipient/buyer) directly instead",
+            "of manual byte parsing — must resolve to the same bytes the",
+            "extra-account-metas list points a generic resolver at (offset 32)."
+          ]
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "position, unused by our recipient-gated design"
+          ]
+        },
+        {
+          "name": "extra_account_metas_list",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  120,
+                  116,
+                  114,
+                  97,
+                  45,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "eligibility_credential_program",
+          "docs": [
+            "`credential` PDA below; identity enforced by the `address` constraint"
+          ],
+          "address": "HeopPJru1XZ7AHXDack1mtLSLKFejvRyLsrJZtJoz1bq"
+        },
+        {
+          "name": "policy_marker",
+          "docs": [
+            "32 bytes, reinterpreted as a Pubkey) can feed `credential`'s seed derivation below.",
+            "See initialise_extra_account_metas_list.rs for why a literal seed won't fit."
+          ]
+        },
+        {
+          "name": "credential",
+          "docs": [
+            "The buyer's eligibility credential, owned by the sibling",
+            "`eligibility-credential` program. Anchor's `Account<'info, T>` checks",
+            "both the discriminator and that the account is owned by",
+            "`EligibilityCredential::owner()` (== eligibility_credential::ID), so",
+            "a missing credential fails here with `AccountNotInitialized` before",
+            "`assert_eligible` ever runs."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  108,
+                  105,
+                  103,
+                  105,
+                  98,
+                  105,
+                  108,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "destination_token_account.owner"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  85,
+                  83,
+                  95,
+                  65,
+                  67,
+                  67,
+                  82,
+                  69,
+                  68,
+                  73,
+                  84,
+                  69,
+                  68,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "eligibility_credential_program"
+            }
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "_amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "IsNotCurrentlyTransferring",
+      "msg": "The token is not currently transferring"
+    },
+    {
+      "code": 6001,
+      "name": "CredentialRevoked",
+      "msg": "Eligibility credential has been revoked"
+    },
+    {
+      "code": 6002,
+      "name": "CredentialExpired",
+      "msg": "Eligibility credential has expired"
+    }
+  ],
+  "types": [
+    {
+      "name": "CredentialStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Valid"
+          },
+          {
+            "name": "Revoked"
+          },
+          {
+            "name": "Expired"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EligibilityCredential",
+      "docs": [
+        "Real schema — see progress.md §2. Replaces the `WalletGate` placeholder",
+        "that used to live in `transfer-hook`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "policy_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "issuer",
+            "type": "pubkey"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "CredentialStatus"
+              }
+            }
+          },
+          {
+            "name": "issued_at",
+            "type": "i64"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}
