@@ -2,7 +2,9 @@ import { PublicKey } from "@solana/web3.js";
 import { DBC_POOL } from "./dbcPool.js";
 
 export const RPC_URL = process.env.RPC_URL ?? "https://api.devnet.solana.com";
-export const WS_PORT = Number(process.env.WS_PORT ?? 8787);
+// Railway (and most PaaS hosts) inject PORT and require the app to listen on
+// it; WS_PORT stays as an explicit override for local dev.
+export const WS_PORT = Number(process.env.WS_PORT ?? process.env.PORT ?? 8787);
 
 export const TRANSFER_HOOK_PROGRAM_ID = new PublicKey(
   process.env.TRANSFER_HOOK_PROGRAM_ID ?? "F9p71yDgPkb3u6FM8jVaGWqQgDY2z6hGmHLof8FANr4z",

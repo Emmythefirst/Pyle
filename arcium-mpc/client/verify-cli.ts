@@ -32,6 +32,16 @@ function loadKeypair(filePath: string): Keypair {
   return Keypair.fromSecretKey(Uint8Array.from(raw));
 }
 
+// A hosted backend spawns this script with no local Solana config and no
+// gitignored wallet files on disk -- only the secret-key byte array as an
+// env var (same JSON-array format the local files already use). Mirrors
+// backend/src/demoWallets.ts's loadKeypairFromEnvOrFile.
+function loadKeypairFromEnvOrFile(envVar: string, filePath: string): Keypair {
+  const envValue = process.env[envVar];
+  if (envValue) return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(envValue)));
+  return loadKeypair(filePath);
+}
+
 function credentialPda(wallet: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("eligibility"), wallet.toBuffer(), POLICY_US_ACCREDITED],
@@ -48,8 +58,9 @@ async function main() {
   const rpcUrl = process.env.RPC_URL ?? "https://api.devnet.solana.com";
   const connection = new anchor.web3.Connection(rpcUrl, "confirmed");
 
-  const mainPayer = loadKeypair(path.join(os.homedir(), ".config/solana/id.json"));
-  const wallet = loadKeypair(
+  const mainPayer = loadKeypairFromEnvOrFile("TREASURY_SECRET_KEY", path.join(os.homedir(), ".config/solana/id.json"));
+  const wallet = loadKeypairFromEnvOrFile(
+    `WALLET_${walletKey}_SECRET_KEY`,
     path.resolve(
       import.meta.dirname,
       `../../scripts/eligibility-test/wallet-${walletKey.toLowerCase()}-keypair.json`,
