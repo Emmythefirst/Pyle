@@ -319,6 +319,7 @@ export function Terminal({
 
         {tab === "verify" && (
           <VerifyPanel
+            key={activeWallet}
             wallet={activeWallet}
             onIssued={() => {
               void refreshCredential(activeWallet);
@@ -328,6 +329,7 @@ export function Terminal({
         {tab === "cred" && <CredentialPanel wallet={activeWallet} cred={cred} goVerify={() => setTab("verify")} />}
         {tab === "buy" && (
           <BuyPanel
+            key={activeWallet}
             wallet={activeWallet}
             cred={cred}
             gated={gated}
